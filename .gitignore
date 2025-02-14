@@ -1,0 +1,10 @@
+*.ipa
+*.p8
+*.p12
+*.mobileprovision
+capabilities.json
+*__pycache__/
+NOTES.md
+*.txt
+.env
+/certificates/
