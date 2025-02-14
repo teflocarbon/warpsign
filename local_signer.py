@@ -161,7 +161,7 @@ class LocalSigner:
                 group = self.api.register_app_group(
                     self.team_id,
                     group_id,
-                    f"App Group for {group_id}",
+                    f"WS App Group {group_id.replace('.', ' ')}",
                 )
                 if group:
                     registered_groups.append(group)
@@ -183,7 +183,7 @@ class LocalSigner:
                 container = self.api.register_icloud_container(
                     self.team_id,
                     container_id,
-                    f"iCloud Container for {container_id}",
+                    f"WS iCloud Container {container_id.replace('.', ' ')}",
                 )
                 if container:
                     registered_containers.append(container)
@@ -215,7 +215,7 @@ class LocalSigner:
             bundle = self.api.register_bundle_id(
                 self.team_id,
                 new_id,
-                f"TS {display_name} {new_id.split('.')[-1]}",
+                f"WS {display_name} {new_id.split('.')[-1].replace('.', ' ')}",
             )
 
             if bundle:
