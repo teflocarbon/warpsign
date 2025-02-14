@@ -920,17 +920,24 @@ class DeveloperPortalAPI:
             return None
 
         data = response.json()
-        if data.get("resultCode") == 35:  # Error code for "already exists"
+
+        user_string = data.get("userString", "")
+        if "is not available. Please enter a different string." in user_string:
             console.print(
                 f"[yellow]App group {identifier} already exists, fetching existing groups...[/]"
             )
             # Get all groups and find matching one
             all_groups = self.list_app_group_ids(team_id)
-            for group in all_groups:
-                if group.identifier == identifier:
-                    console.print("[green]Found existing app group[/]")
-                    return group
+            matching_group = next(
+                (group for group in all_groups if group.identifier == identifier), None
+            )
+            if matching_group:
+                console.print("[green]Found existing app group[/]")
+                return matching_group
+
+            console.print("[red]Could not find existing app group[/]")
             return None
+
         elif data.get("resultCode") != 0:
             console.print(f"[red]API error: {data}")
             return None
@@ -983,17 +990,28 @@ class DeveloperPortalAPI:
             return None
 
         data = response.json()
-        if data.get("resultCode") == 35:  # Error code for "already exists"
+        user_string = data.get("userString", "")
+        if "is not available. Please enter a different string." in user_string:
             console.print(
                 f"[yellow]iCloud container {identifier} already exists, fetching existing containers...[/]"
             )
             # Get all containers and find matching one
             all_containers = self.list_icloud_container_ids(team_id)
-            for container in all_containers:
-                if container.identifier == identifier:
-                    console.print("[green]Found existing iCloud container[/]")
-                    return container
+            matching_container = next(
+                (
+                    container
+                    for container in all_containers
+                    if container.identifier == identifier
+                ),
+                None,
+            )
+            if matching_container:
+                console.print("[green]Found existing iCloud container[/]")
+                return matching_container
+
+            console.print("[red]Could not find existing iCloud container[/]")
             return None
+
         elif data.get("resultCode") != 0:
             console.print(f"[red]API error: {data}")
             return None
