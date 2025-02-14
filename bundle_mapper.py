@@ -225,6 +225,22 @@ class BundleMapping:
                 )
                 result[key] = [self.map_id(c, IDType.ICLOUD) for c in containers]
 
+        # Handle ubiquity-kvstore-identifier
+        if "com.apple.developer.ubiquity-kvstore-identifier" in result:
+            kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
+            if "." in kvstore_id:  # If it contains a team ID
+                bundle_id = kvstore_id.split(".", 1)[1]
+                if force_original_id:
+                    # Keep original bundle ID but update team ID
+                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                        f"{self.team_id}.{bundle_id}"
+                    )
+                else:
+                    new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
+                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                        f"{self.team_id}.{new_bundle_id}"
+                    )
+
         return result
 
     def get_binary_patches(self) -> Dict[str, str]:
