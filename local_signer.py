@@ -74,7 +74,9 @@ class LocalSigner:
         )  # Get all team IDs, there can be multiple.. for some reason..
 
         if not original_team_ids:
-            raise Exception("Could not determine any team IDs from the app")
+            Console().print(
+                "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
+            )
 
         # Set up bundle mapping with all team IDs
         bundle_mapper = BundleMapping(
