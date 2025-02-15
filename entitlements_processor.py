@@ -108,6 +108,10 @@ class EntitlementsProcessor:
             "keychain-access-groups",
         }
 
+        # Always remove in-app payments
+        if "com.apple.developer.in-app-payments" in entitlements:
+            entitlements_to_remove.add("com.apple.developer.in-app-payments")
+
         # Examine each entitlement
         for key, value in entitlements.items():
             if key in core_identifiers:
