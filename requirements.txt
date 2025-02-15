@@ -1,0 +1,5 @@
+rich
+requests
+python-dotenv
+pysrp
+lief
