@@ -352,12 +352,18 @@ class LocalSigner:
                 f.write(profile_content)
             self.console.print(f"[green]Profile saved:[/] {profile_path}")
 
-    def _show_entitlements_mapping(self, original_ents, mapped_ents, bundle_mapper):
+    def _show_entitlements_mapping(self, original_ents, mapped_ents, removals=None):
         """Display entitlements mapping relationships"""
         self.console.print("[cyan]Original entitlements:[/]")
         self.console.print_json(json.dumps(original_ents, indent=4))
 
-        self.console.print("\n[cyan]Mapped entitlements:[/]")
+        if removals:
+            self.console.print("\n[yellow]Removed entitlements:[/]")
+            self.console.print_json(json.dumps(list(removals), indent=4))
+            # Filter out removed entitlements
+            mapped_ents = {k: v for k, v in mapped_ents.items() if k not in removals}
+
+        self.console.print("\n[cyan]Final mapped entitlements:[/]")
         self.console.print_json(json.dumps(mapped_ents, indent=4))
 
     def _sign_components(
@@ -432,12 +438,8 @@ class LocalSigner:
                     force_original_id=True,
                 )
                 self._show_entitlements_mapping(
-                    component.entitlements, mapped_ents, bundle_mapper
+                    component.entitlements, mapped_ents, removals
                 )
-
-                if removals:
-                    self.console.print("[yellow]Removed entitlements:[/]")
-                    self.console.print_json(json.dumps(list(removals), indent=4))
 
             binary_path = inspector.app_dir / component.executable
 
