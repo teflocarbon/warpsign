@@ -35,6 +35,12 @@ Examples:
 
     # Optional arguments for patching options
     parser.add_argument(
+        "--bundle-name",
+        type=str,
+        help="Change the app's visible name [default: keep original]",
+    )
+
+    parser.add_argument(
         "--no-encode-ids",
         action="store_false",
         dest="encode_ids",
@@ -91,15 +97,45 @@ Examples:
     )
 
     parser.add_argument(
-        "--patch-itunes-warning",
+        "--patch-game-mode",
         action="store_true",
-        help="Disable iTunes sync warning [default: disabled]",
+        help="Enable Game Mode support [default: disabled]",
+    )
+
+    parser.add_argument(
+        "--hide-home-indicator",
+        action="store_true",
+        help="Hide home indicator on iPhone X and newer devices [default: disabled]",
     )
 
     parser.add_argument(
         "--inject-plugins-patcher",
         action="store_true",
         help="Inject sideload fix patch dylib, similar to ID patching but dynamic [default: disabled]",
+    )
+
+    parser.add_argument(
+        "--icon",
+        type=Path,
+        help="Path to new icon image (PNG recommended) [default: keep original]",
+    )
+
+    parser.add_argument(
+        "--patch-status-bar",
+        choices=["hidden", "light", "dark"],
+        help="Set status bar style: hidden, light (for dark backgrounds), or dark (for light backgrounds) [default: unchanged]",
+    )
+
+    parser.add_argument(
+        "--patch-user-interface-style",
+        choices=["light", "dark"],
+        help="Force Light or Dark mode [default: automatic]",
+    )
+
+    parser.add_argument(
+        "--remove-url-schemes",
+        action="store_true",
+        help="Remove URL schemes registration [default: disabled]",
     )
 
     return parser
@@ -150,6 +186,8 @@ def main():
 
     console.print("[green]Authentication verified successfully[/]")
 
+    from app_patcher import StatusBarStyle, UIStyle
+
     # Create patching options from arguments
     options = PatchingOptions(
         encode_ids=args.encode_ids,
@@ -161,17 +199,52 @@ def main():
         patch_promotion=args.patch_promotion,
         patch_fullscreen=args.patch_fullscreen,
         patch_orientation=args.patch_orientation,
-        patch_itunes_warning=args.patch_itunes_warning,
+        patch_game_mode=args.patch_game_mode,
+        hide_home_indicator=args.hide_home_indicator,
         inject_plugins_patcher=args.inject_plugins_patcher,
+        bundle_name=args.bundle_name,
+        icon_path=args.icon,
+        patch_status_bar=(
+            StatusBarStyle(args.patch_status_bar)
+            if args.patch_status_bar
+            else StatusBarStyle.DEFAULT
+        ),
+        patch_user_interface_style=(
+            UIStyle(args.patch_user_interface_style)
+            if args.patch_user_interface_style
+            else UIStyle.AUTOMATIC
+        ),
+        remove_url_schemes=args.remove_url_schemes,
     )
 
     # Show configuration summary
     console.print("\n[bold blue]Signing Configuration:[/]")
     console.print(f"[cyan]Input IPA:[/] {args.ipa_path}")
     console.print("\n[cyan]Enabled Options:[/]")
-    for key, value in vars(options).items():
-        if value:
+
+    # Get all options as a dictionary
+    option_values = vars(options)
+
+    # Define default values for enum options
+    enum_defaults = {
+        "patch_status_bar": StatusBarStyle.DEFAULT,
+        "patch_user_interface_style": UIStyle.AUTOMATIC,
+    }
+
+    # Show only non-default boolean options and modified enum options
+    for key, value in option_values.items():
+        # Skip None values
+        if value is None:
+            continue
+        # Handle boolean options
+        if isinstance(value, bool) and value:
             console.print(f"  • {key.replace('_', ' ').title()}")
+        # Handle enum options
+        elif key in enum_defaults and value != enum_defaults[key]:
+            console.print(f"  • {key.replace('_', ' ').title()}: {value.value}")
+        # Handle string/path options if they are set
+        elif key in ("bundle_name", "icon_path") and value:
+            console.print(f"  • {key.replace('_', ' ').title()}: {value}")
 
     # Confirm before proceeding
     if not console.input("\n[yellow]Press Enter to continue or Ctrl+C to cancel[/]"):

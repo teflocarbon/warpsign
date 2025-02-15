@@ -9,6 +9,20 @@ from bundle_mapper import BundleMapping, IDType
 from collections import OrderedDict
 import lief
 from lief import MachO
+from enum import Enum, auto
+
+
+class StatusBarStyle(Enum):
+    DEFAULT = "default"  # Don't modify
+    HIDDEN = "hidden"  # Hide status bar
+    LIGHT = "light"  # Light status bar for dark backgrounds
+    DARK = "dark"  # Dark status bar for light backgrounds
+
+
+class UIStyle(Enum):
+    AUTOMATIC = "automatic"
+    LIGHT = "light"
+    DARK = "dark"
 
 
 @dataclass
@@ -31,8 +45,15 @@ class PatchingOptions:
     patch_promotion: bool = False  # Enable ProMotion/120Hz
     patch_fullscreen: bool = False  # Force fullscreen on iPad
     patch_orientation: bool = False  # Force orientation support
-    patch_itunes_warning: bool = False  # Disable iTunes sync warning
+    patch_game_mode: bool = False  # Enable game mode support
+    icon_path: Optional[Path] = None  # New icon path (None = keep original)
+    patch_status_bar: StatusBarStyle = StatusBarStyle.DEFAULT  # Status bar appearance
+    patch_user_interface_style: UIStyle = UIStyle.AUTOMATIC  # Force UI style
+    remove_url_schemes: bool = False  # Remove URL schemes registration
+
+    # Plugins patcher
     inject_plugins_patcher: bool = False  # Enable plugins patcher injection
+    hide_home_indicator: bool = False  # Hide home indicator on iPhone X and newer
 
 
 class OrderPreservingDict(OrderedDict):
@@ -61,6 +82,12 @@ class AppPatcher:
         self.console = Console()
         self.bundle_mapper = bundle_mapper
         self.plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
+        self.home_indicator_dylib = (
+            Path(__file__).parent / "patches" / "ForceHideHomeIndicator.dylib"
+        )
+        from icon_handler import IconHandler
+
+        self.icon_handler = IconHandler()
         if opts.inject_plugins_patcher and not self.plugins_dylib.exists():
             raise ValueError(f"Plugins patcher dylib not found: {self.plugins_dylib}")
 
@@ -161,6 +188,23 @@ class AppPatcher:
         # Only apply device and file sharing patches to main app bundle
         # This can corrupt the plist for extensions and other bundles!
         if is_main_app:
+            # Change icon if specified
+            if self.opts.icon_path:
+                if self.icon_handler.update_app_icon(
+                    self.app_dir, self.opts.icon_path, info
+                ):
+                    self.console.log("[green]Successfully updated app icon")
+                else:
+                    self.console.log("[yellow]Failed to update app icon")
+
+            # Change bundle display name if specified
+            if self.opts.bundle_name:
+                self.console.log(
+                    f"[green]Setting app display name to:[/] {self.opts.bundle_name}"
+                )
+                info["CFBundleDisplayName"] = self.opts.bundle_name
+                info["CFBundleName"] = self.opts.bundle_name
+
             # Device support patches
             if self.opts.patch_all_devices:
                 self.console.log("[green]Enabling support for all devices")
@@ -175,9 +219,9 @@ class AppPatcher:
                 )
 
                 old_min_ver = info.get("MinimumOSVersion", "Unknown")
-                info["MinimumOSVersion"] = "12.0"
+                info["MinimumOSVersion"] = "10.0"
                 self.console.log(
-                    f"[green]Setting MinimumOSVersion:[/] {old_min_ver} -> 12.0"
+                    f"[green]Setting MinimumOSVersion:[/] {old_min_ver} -> 10.0"
                 )
 
             # File sharing patches
@@ -185,15 +229,20 @@ class AppPatcher:
                 self.console.log("[green]Enabling file sharing support")
                 old_sharing = info.get("UIFileSharingEnabled", False)
                 old_browser = info.get("UISupportsDocumentBrowser", False)
+                old_inplace = info.get("LSSupportsOpeningDocumentsInPlace", False)
 
                 info["UIFileSharingEnabled"] = True
                 info["UISupportsDocumentBrowser"] = True
+                info["LSSupportsOpeningDocumentsInPlace"] = True
 
                 self.console.log(
                     f"[green]Setting UIFileSharingEnabled:[/] {old_sharing} -> True"
                 )
                 self.console.log(
                     f"[green]Setting UISupportsDocumentBrowser:[/] {old_browser} -> True"
+                )
+                self.console.log(
+                    f"[green]Setting LSSupportsOpeningDocumentsInPlace:[/] {old_inplace} -> True"
                 )
 
             # ProMotion / High Refresh Rate Support
@@ -226,11 +275,42 @@ class AppPatcher:
                     "UIInterfaceOrientationPortraitUpsideDown",
                 ]
 
-            # Disable iTunes File Sync Warning
-            if self.opts.patch_itunes_warning:
-                self.console.log("[green]Disabling iTunes file sync warning")
-                info["UIFileSharingEnabled"] = True
-                info["LSSupportsOpeningDocumentsInPlace"] = True
+            # Enable Game Mode Support
+            if self.opts.patch_game_mode:
+                self.console.log("[green]Enabling Game Mode support")
+                info["GCSupportsGameMode"] = True
+
+            # Status Bar Appearance
+            if self.opts.patch_status_bar != StatusBarStyle.DEFAULT:
+                self.console.log(
+                    f"[green]Setting status bar style: {self.opts.patch_status_bar.value}"
+                )
+                if self.opts.patch_status_bar == StatusBarStyle.HIDDEN:
+                    info["UIViewControllerBasedStatusBarAppearance"] = False
+                    info["UIStatusBarHidden"] = True
+                elif self.opts.patch_status_bar == StatusBarStyle.LIGHT:
+                    info["UIViewControllerBasedStatusBarAppearance"] = False
+                    info["UIStatusBarStyle"] = "UIStatusBarStyleLightContent"
+                elif self.opts.patch_status_bar == StatusBarStyle.DARK:
+                    info["UIViewControllerBasedStatusBarAppearance"] = False
+                    info["UIStatusBarStyle"] = "UIStatusBarStyleDarkContent"
+
+            # User Interface Style
+            if self.opts.patch_user_interface_style != UIStyle.AUTOMATIC:
+                self.console.log(
+                    f"[green]Setting UI style: {self.opts.patch_user_interface_style.value}"
+                )
+                style_value = (
+                    "Light"
+                    if self.opts.patch_user_interface_style == UIStyle.LIGHT
+                    else "Dark"
+                )
+                info["UIUserInterfaceStyle"] = style_value
+
+            # Remove URL schemes if specified
+            if self.opts.remove_url_schemes and "CFBundleURLTypes" in info:
+                self.console.log("[green]Removing URL schemes registration")
+                info.pop("CFBundleURLTypes")
 
         # Write changes back
         with open(info_plist, "wb") as f:
@@ -391,9 +471,12 @@ class AppPatcher:
         app_binary: Path,
         bundle_mapper: Optional[BundleMapping] = None,
         entitlements: Optional[Dict] = None,
+        is_main_binary: bool = False,
     ) -> None:
         """Patch the main app binary"""
-        self.console.log(f"[blue]Patching app binary:[/] {app_binary}")
+        self.console.log(
+            f"[blue]Patching {'main' if is_main_binary else 'secondary'} binary:[/] {app_binary}"
+        )
 
         # Update entitlements if provided
         if entitlements is not None:
@@ -417,11 +500,20 @@ class AppPatcher:
             if replacements:
                 self.patch_binary(app_binary, replacements)
 
-        # Inject plugins patcher dylib if enabled
+        # Inject plugins patcher dylib if enabled (into all binaries)
         if self.opts.inject_plugins_patcher:
             dylib_name = self.plugins_dylib.name
             try:
                 self.inject_dylib_with_lief(app_binary, dylib_name)
             except Exception as e:
-                self.console.log(f"[red]Failed to inject dylib: {e}[/]")
+                self.console.log(f"[red]Failed to inject plugins dylib: {e}[/]")
+                raise
+
+        # Inject home indicator dylib if enabled (only into main binary)
+        if is_main_binary and self.opts.hide_home_indicator:
+            dylib_name = self.home_indicator_dylib.name
+            try:
+                self.inject_dylib_with_lief(app_binary, dylib_name)
+            except Exception as e:
+                self.console.log(f"[red]Failed to inject home indicator dylib: {e}[/]")
                 raise

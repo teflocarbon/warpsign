@@ -379,27 +379,34 @@ class LocalSigner:
         self.patcher.bundle_mapper = bundle_mapper
 
         self.console.print("\n[blue]Signing frameworks[/]")
-        # Sort components to prioritize pluginsinject.dylib
+        # Sort components to prioritize injected dylibs
         framework_components = [c for c in components if not c.is_primary]
-        plugins_dylib = next(
-            (
-                c
-                for c in framework_components
-                if c.executable.name == "pluginsinject.dylib"
-            ),
-            None,
-        )
+
+        # Define known dylibs
+        KNOWN_DYLIBS = {
+            "pluginsinject.dylib": "plugins dylib",
+            "ForceHideHomeIndicator.dylib": "home indicator dylib",
+        }
+
+        # Sort components into dylibs and other frameworks
+        dylibs = {
+            name: next(
+                (c for c in framework_components if c.executable.name == name), None
+            )
+            for name in KNOWN_DYLIBS.keys()
+        }
         other_frameworks = [
-            c
-            for c in framework_components
-            if c.executable.name != "pluginsinject.dylib"
+            c for c in framework_components if c.executable.name not in KNOWN_DYLIBS
         ]
 
-        # Handle plugins dylib first if present
-        if plugins_dylib:
-            binary_path = inspector.app_dir / plugins_dylib.executable
-            self.console.print(f"[blue]Signing plugins dylib:[/] {binary_path}")
-            self.cert_handler.sign_binary(binary_path, None, False)
+        # Sign dylibs first
+        for dylib_name, component in dylibs.items():
+            if component:
+                binary_path = inspector.app_dir / component.executable
+                self.console.print(
+                    f"[blue]Signing {KNOWN_DYLIBS[dylib_name]}:[/] {binary_path}"
+                )
+                self.cert_handler.sign_binary(binary_path, None, False)
 
         # Handle remaining frameworks
         for component in other_frameworks:
@@ -451,8 +458,13 @@ class LocalSigner:
                     k: v for k, v in mapped_ents.items() if k not in removals
                 }
 
+            # Determine if this is the main binary
+            is_main_binary = component.path == Path(".")
+
             # Patch and sign binary
-            self.patcher.patch_app_binary(binary_path, bundle_mapper, filtered_ents)
+            self.patcher.patch_app_binary(
+                binary_path, bundle_mapper, filtered_ents, is_main_binary=is_main_binary
+            )
 
             if filtered_ents:
                 ents_file = (
@@ -490,25 +502,37 @@ class LocalSigner:
 
         self.console.print(f"[green]Successfully signed IPA:[/] {output_path}")
 
-    def _setup_plugins_dylib(self, app_dir: Path) -> None:
-        """Set up plugins dylib in app bundle before processing"""
-        if not self.patching_options.inject_plugins_patcher:
-            return
-
-        plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
-        if not plugins_dylib.exists():
-            raise ValueError(f"Plugins patcher dylib not found: {plugins_dylib}")
-
+    def _setup_dylibs(self, app_dir: Path) -> None:
+        """Set up dylibs in app bundle before processing"""
         # Create Frameworks directory if it doesn't exist
         frameworks_dir = app_dir / "Frameworks"
         frameworks_dir.mkdir(exist_ok=True)
 
-        # Copy dylib to Frameworks
-        dylib_name = plugins_dylib.name
-        target_dylib = frameworks_dir / dylib_name
-        if not target_dylib.exists():
-            shutil.copy2(plugins_dylib, target_dylib)
-            self.console.print(f"[green]Copied {dylib_name} to Frameworks[/]")
+        # Handle plugins dylib
+        if self.patching_options.inject_plugins_patcher:
+            plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
+            if not plugins_dylib.exists():
+                raise ValueError(f"Plugins patcher dylib not found: {plugins_dylib}")
+
+            target_dylib = frameworks_dir / plugins_dylib.name
+            if not target_dylib.exists():
+                shutil.copy2(plugins_dylib, target_dylib)
+                self.console.print(
+                    f"[green]Copied {plugins_dylib.name} to Frameworks[/]"
+                )
+
+        # Handle home indicator dylib
+        if self.patching_options.hide_home_indicator:
+            home_dylib = (
+                Path(__file__).parent / "patches" / "ForceHideHomeIndicator.dylib"
+            )
+            if not home_dylib.exists():
+                raise ValueError(f"Home indicator dylib not found: {home_dylib}")
+
+            target_dylib = frameworks_dir / home_dylib.name
+            if not target_dylib.exists():
+                shutil.copy2(home_dylib, target_dylib)
+                self.console.print(f"[green]Copied {home_dylib.name} to Frameworks[/]")
 
     def sign_ipa(
         self, ipa_path: Path, output_path: Path, patching_options: PatchingOptions
@@ -521,9 +545,8 @@ class LocalSigner:
             temp_path = Path(temp_dir)
 
             with IPAInspector(ipa_path) as inspector:
-                # Set up plugins dylib first if needed
-                if self.patching_options.inject_plugins_patcher:
-                    self._setup_plugins_dylib(inspector.app_dir)
+                # Set up dylibs first if needed
+                self._setup_dylibs(inspector.app_dir)
 
                 # Initialize the patcher once with provided options
                 self.patcher = AppPatcher(

@@ -8,3 +8,5 @@ NOTES.md
 *.txt
 .env
 /certificates/
+.DS_Store
+.vscode
