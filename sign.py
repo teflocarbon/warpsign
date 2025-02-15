@@ -96,12 +96,28 @@ Examples:
         help="Disable iTunes sync warning [default: disabled]",
     )
 
+    parser.add_argument(
+        "--inject-plugins-patcher",
+        action="store_true",
+        help="Inject sideload fix patch dylib, similar to ID patching but dynamic [default: disabled]",
+    )
+
     return parser
 
 
 def main():
     console = Console()
     parser = create_parser()
+
+    # Fix for VS Code debug where arguments might be concatenated and escaped
+    if len(sys.argv) == 2:
+        # Remove escape characters and split on actual spaces
+        arg = sys.argv[1].replace("\\ ", "__SPACE__")
+        parts = arg.split(" ")
+        parts = [p.replace("__SPACE__", " ").strip() for p in parts]
+        # Replace the original arguments
+        sys.argv[1:] = parts
+
     args = parser.parse_args()
 
     # Verify IPA file exists
@@ -146,6 +162,7 @@ def main():
         patch_fullscreen=args.patch_fullscreen,
         patch_orientation=args.patch_orientation,
         patch_itunes_warning=args.patch_itunes_warning,
+        inject_plugins_patcher=args.inject_plugins_patcher,
     )
 
     # Show configuration summary

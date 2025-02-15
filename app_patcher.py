@@ -7,6 +7,8 @@ import subprocess
 import shutil
 from bundle_mapper import BundleMapping, IDType
 from collections import OrderedDict
+import lief
+from lief import MachO
 
 
 @dataclass
@@ -30,6 +32,7 @@ class PatchingOptions:
     patch_fullscreen: bool = False  # Force fullscreen on iPad
     patch_orientation: bool = False  # Force orientation support
     patch_itunes_warning: bool = False  # Disable iTunes sync warning
+    inject_plugins_patcher: bool = False  # Enable plugins patcher injection
 
 
 class OrderPreservingDict(OrderedDict):
@@ -57,6 +60,9 @@ class AppPatcher:
         self.opts = opts
         self.console = Console()
         self.bundle_mapper = bundle_mapper
+        self.plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
+        if opts.inject_plugins_patcher and not self.plugins_dylib.exists():
+            raise ValueError(f"Plugins patcher dylib not found: {self.plugins_dylib}")
 
     def clean_app_bundle(self, app_dir: Path) -> None:
         """Remove unnecessary app bundle components"""
@@ -336,6 +342,50 @@ class AppPatcher:
 
         self.console.log(f"[blue]Total replacements in binary:[/] {total_replacements}")
 
+    def inject_dylib_with_lief(self, binary_path: Path, dylib_name: str) -> None:
+        """Inject a dylib into a Mach-O binary using LIEF"""
+        self.console.log(f"[blue]Injecting {dylib_name} with LIEF[/]")
+
+        # Parse binary
+        parsed = MachO.parse(str(binary_path))
+
+        # Handle fat binary
+        if isinstance(parsed, MachO.FatBinary):
+            self.console.log("[blue]Found Fat Binary - processing all architectures")
+            binaries = [parsed.at(i) for i in range(parsed.size)]
+        else:
+            binaries = [parsed]
+
+        # Process each binary
+        for binary in binaries:
+            # Check encryption status
+            if binary.has_encryption_info and binary.encryption_info.crypt_id != 0:
+                self.console.log("[red]Error: Binary is encrypted![/]")
+                self.console.log(
+                    "[yellow]App must be decrypted first (check AppStore DRM)"
+                )
+                raise ValueError("Cannot modify encrypted binary")
+            else:
+                self.console.log("[green]Binary is not encrypted, proceeding")
+
+            # Print and verify @rpath configuration
+            rpath_found = False
+            for rpath in binary.rpaths:
+                if rpath.path == "@executable_path/Frameworks":
+                    rpath_found = True
+
+            if not rpath_found:
+                dylib_path = f"@executable_path/Frameworks/{dylib_name}"
+            else:
+                dylib_path = f"@rpath/{dylib_name}"
+
+            # Add LC_LOAD_DYLIB command using the determined rpath
+            binary.add_library(dylib_path)
+
+        # Write modified binary
+        parsed.write(str(binary_path))
+        self.console.log(f"[green]Injected {dylib_path} successfully[/]")
+
     def patch_app_binary(
         self,
         app_binary: Path,
@@ -366,3 +416,12 @@ class AppPatcher:
             replacements = bundle_mapper.get_binary_patches()
             if replacements:
                 self.patch_binary(app_binary, replacements)
+
+        # Inject plugins patcher dylib if enabled
+        if self.opts.inject_plugins_patcher:
+            dylib_name = self.plugins_dylib.name
+            try:
+                self.inject_dylib_with_lief(app_binary, dylib_name)
+            except Exception as e:
+                self.console.log(f"[red]Failed to inject dylib: {e}[/]")
+                raise

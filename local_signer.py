@@ -370,16 +370,37 @@ class LocalSigner:
         # Update patcher's bundle mapper
         self.patcher.bundle_mapper = bundle_mapper
 
-        # First sign frameworks
         self.console.print("\n[blue]Signing frameworks[/]")
-        for component in components:
-            if not component.is_primary:
-                binary_path = inspector.app_dir / component.executable
-                self.console.print(
-                    f"[blue]Patching and signing framework:[/] {binary_path}"
-                )
-                self.patcher.patch_app_binary(binary_path, bundle_mapper)
-                self.cert_handler.sign_binary(binary_path, None, False)
+        # Sort components to prioritize pluginsinject.dylib
+        framework_components = [c for c in components if not c.is_primary]
+        plugins_dylib = next(
+            (
+                c
+                for c in framework_components
+                if c.executable.name == "pluginsinject.dylib"
+            ),
+            None,
+        )
+        other_frameworks = [
+            c
+            for c in framework_components
+            if c.executable.name != "pluginsinject.dylib"
+        ]
+
+        # Handle plugins dylib first if present
+        if plugins_dylib:
+            binary_path = inspector.app_dir / plugins_dylib.executable
+            self.console.print(f"[blue]Signing plugins dylib:[/] {binary_path}")
+            self.cert_handler.sign_binary(binary_path, None, False)
+
+        # Handle remaining frameworks
+        for component in other_frameworks:
+            binary_path = inspector.app_dir / component.executable
+            self.console.print(
+                f"[blue]Patching and signing framework:[/] {binary_path}"
+            )
+            self.patcher.patch_app_binary(binary_path, bundle_mapper)
+            self.cert_handler.sign_binary(binary_path, None, False)
 
         # Sort primary components by path depth (deepest first)
         primary_components = sorted(
@@ -465,6 +486,26 @@ class LocalSigner:
 
         self.console.print(f"[green]Successfully signed IPA:[/] {output_path}")
 
+    def _setup_plugins_dylib(self, app_dir: Path) -> None:
+        """Set up plugins dylib in app bundle before processing"""
+        if not self.patching_options.inject_plugins_patcher:
+            return
+
+        plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
+        if not plugins_dylib.exists():
+            raise ValueError(f"Plugins patcher dylib not found: {plugins_dylib}")
+
+        # Create Frameworks directory if it doesn't exist
+        frameworks_dir = app_dir / "Frameworks"
+        frameworks_dir.mkdir(exist_ok=True)
+
+        # Copy dylib to Frameworks
+        dylib_name = plugins_dylib.name
+        target_dylib = frameworks_dir / dylib_name
+        if not target_dylib.exists():
+            shutil.copy2(plugins_dylib, target_dylib)
+            self.console.print(f"[green]Copied {dylib_name} to Frameworks[/]")
+
     def sign_ipa(
         self, ipa_path: Path, output_path: Path, patching_options: PatchingOptions
     ):
@@ -476,6 +517,10 @@ class LocalSigner:
             temp_path = Path(temp_dir)
 
             with IPAInspector(ipa_path) as inspector:
+                # Set up plugins dylib first if needed
+                if self.patching_options.inject_plugins_patcher:
+                    self._setup_plugins_dylib(inspector.app_dir)
+
                 # Initialize the patcher once with provided options
                 self.patcher = AppPatcher(
                     inspector.app_dir,
