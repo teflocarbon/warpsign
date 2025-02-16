@@ -11,11 +11,26 @@ from rich.console import Console
 import re
 from typing import Optional
 from dotenv import load_dotenv
+from datetime import datetime, timezone  # Add this import
 
 # Load environment variables from .env file
 load_dotenv()
 
 console = Console()
+
+
+class LoggingCookieJar(cookielib.LWPCookieJar):
+    def set_cookie(self, cookie):
+        expires = (
+            "never"
+            if cookie.expires is None
+            else f"expires {datetime.fromtimestamp(cookie.expires, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        )
+        console.print(
+            f"[dim cyan]Setting cookie: {cookie.name}={cookie.value[:5]}... "
+            f"(Domain: {cookie.domain}, {expires})[/]"
+        )
+        return super().set_cookie(cookie)
 
 
 class AppleDeveloperAuth:
@@ -27,40 +42,23 @@ class AppleDeveloperAuth:
         self._widget_key = None
         self.csrf = None
         self.csrf_ts = None
+        self.email = None  # Store email for session management
 
         # First try to load existing session
         self._cookie_directory = Path.home() / ".warpsign" / "sessions"
         self._cookie_directory.mkdir(parents=True, exist_ok=True)
 
-        # Try to find existing session
-        existing_sessions = list(self._cookie_directory.glob("*.session"))
-        if existing_sessions:
-            # Load first found session
-            with open(existing_sessions[0]) as f:
-                self.session_data = json.load(f)
-                self.client_id = self.session_data.get("client_id")
-                console.print(f"Found existing session for client_id: {self.client_id}")
-        else:
-            self.session_data = {}
-            self.client_id = f"auth-{os.urandom(8).hex()}"
-            console.print(
-                f"No existing session found, created new client_id: {self.client_id}"
-            )
+    def _get_session_id(self, email: str) -> str:
+        """Generate consistent session ID from email"""
+        # Use first 8 chars of email hash for ID
+        return f"auth-{hashlib.sha256(email.encode()).hexdigest()[:8]}"
 
-        self.params = {"clientId": self.client_id}
-
-        # Setup cookie handling
-        self.session.cookies = cookielib.LWPCookieJar(filename=self.cookiejar_path)
-        if os.path.exists(self.cookiejar_path):
-            try:
-                self.session.cookies.load(ignore_discard=True, ignore_expires=True)
-                console.print("Loaded cookies from", self.cookiejar_path)
-            except:
-                console.print("Failed to load cookies from", self.cookiejar_path)
-
-        # Load saved session data
-        self.load_session()
-        # print("Loaded session data:", self.session_data)
+    def _get_paths(self, email: str) -> tuple[str, str]:
+        """Get cookie and session paths for email"""
+        session_id = self._get_session_id(email)
+        cookie_path = str(self._cookie_directory / f"{session_id}.cookies")
+        session_path = str(self._cookie_directory / f"{session_id}.session")
+        return cookie_path, session_path
 
     @property
     def widget_key(self) -> str:
@@ -74,12 +72,16 @@ class AppleDeveloperAuth:
     @property
     def cookiejar_path(self) -> str:
         """Get path for cookiejar file."""
-        return str(self._cookie_directory / f"{self.client_id}.cookies")
+        if not self.email:
+            raise ValueError("Email not set")
+        return self._get_paths(self.email)[0]
 
     @property
     def session_path(self) -> str:
         """Get path for session data file."""
-        return str(self._cookie_directory / f"{self.client_id}.session")
+        if not self.email:
+            raise ValueError("Email not set")
+        return self._get_paths(self.email)[1]
 
     def load_session(self) -> None:
         """Load session data from file."""
@@ -103,6 +105,7 @@ class AppleDeveloperAuth:
         console.print("Session data: [dim](sensitive data hidden)[/]")
         with open(self.session_path, "w") as f:
             json.dump(self.session_data, f)
+        # Save ALL cookies, even if they're marked as discardable or expired
         self.session.cookies.save(ignore_discard=True, ignore_expires=True)
         console.print("[green]Session saved successfully[/]")
 
@@ -146,6 +149,7 @@ class AppleDeveloperAuth:
 
     def validate_token(self) -> bool:
         """Check if current session token is still valid and fetch CSRF tokens."""
+        self._log_cookies("Using these cookies for validation:")
         if self.check_auth_status():
             # Fetch CSRF tokens after confirming session is valid
             response = self.session.get("https://developer.apple.com/account/resources")
@@ -189,15 +193,46 @@ class AppleDeveloperAuth:
             console.print("[red]Error: Email and password are required[/]")
             return False
 
+        self.email = email
+        self.client_id = self._get_session_id(email)
+        cookie_path, session_path = self._get_paths(email)
+
+        # Initialize cookie jar for this email
+        self.session.cookies = LoggingCookieJar(filename=cookie_path)
+        policy = cookielib.DefaultCookiePolicy(
+            allowed_domains=None,
+            strict_domain=False,
+        )
+        self.session.cookies.set_policy(policy)
+
+        # Try to load existing cookies
+        if os.path.exists(cookie_path):
+            try:
+                self.session.cookies.load(ignore_discard=True, ignore_expires=True)
+                console.print(f"Loaded cookies for {email}")
+                self._log_cookies("Existing cookies for this account:")
+            except Exception as e:
+                console.print(f"Failed to load cookies: {e}")
+
+        # Try to load existing session data
+        if os.path.exists(session_path):
+            try:
+                with open(session_path) as f:
+                    self.session_data = json.load(f)
+                    console.print(f"Loaded existing session for {email}")
+            except Exception:
+                self.session_data = {"client_id": self.client_id, "email": email}
+        else:
+            self.session_data = {"client_id": self.client_id, "email": email}
+
         # Try to use existing session first
         if self.validate_token():
             console.print("Using existing session")
             return True
-        else:
-            console.print("Session invalid or expired, authenticating from scratch...")
-            # Clear old session data since it's invalid
-            self.session_data = {}
-            self.session.cookies.clear()
+
+        console.print("Session invalid or expired, authenticating from scratch...")
+        # Only clear session data, keep cookies
+        self.session_data = {"client_id": self.client_id, "email": email}
 
         # Password handler class from iCloud implementation
         class SrpPassword:
@@ -282,14 +317,14 @@ class AppleDeveloperAuth:
             "c": c,
             "m1": base64.b64encode(m1).decode(),
             "m2": base64.b64encode(m2).decode(),
-            "rememberMe": False,  # Changed to False to match Fastlane
+            "rememberMe": True,
         }
 
         # Need to match Fastlane's URL structure exactly
         console.print("Completing authentication...")
         complete_response = self.session.post(
             f"{self.auth_endpoint}/signin/complete",
-            params={"isRememberMeEnabled": "false"},  # Changed to match Fastlane
+            params={"isRememberMeEnabled": "true"},
             json=complete_data,
             headers=headers,
         )
@@ -363,11 +398,9 @@ class AppleDeveloperAuth:
         # After successful authentication, get CSRF tokens
         response = self.session.get("https://developer.apple.com/account")
         if response.status_code == 200:
-            # Extract CSRF tokens from cookies or headers
-            self.csrf = self.session.cookies.get("csrf")  # or from response headers
-            self.csrf_ts = self.session.cookies.get(
-                "csrf_ts"
-            )  # or from response headers
+            # Extract CSRF tokens from cookies using the correct method
+            self.csrf = self._get_cookie_value("csrf")
+            self.csrf_ts = self._get_cookie_value("csrf_ts")
 
             if not self.csrf or not self.csrf_ts:
                 # Try to extract from page content if not in cookies
@@ -379,6 +412,22 @@ class AppleDeveloperAuth:
                 )
                 if match:
                     self.csrf_ts = match.group(1)
+
+            # Save session data after successful authentication
+            if complete_response.status_code in (200, 302):
+                session_id = complete_response.headers.get("X-Apple-ID-Session-Id")
+                scnt = complete_response.headers.get("scnt")
+                if session_id and scnt:
+                    self.session_data.update(
+                        {
+                            "session_id": session_id,
+                            "scnt": scnt,
+                            "client_id": self.client_id,
+                            "email": email,
+                        }
+                    )
+                    self.save_session()
+                    console.print("Session data saved after authentication")
 
         return complete_response.status_code in (200, 302, 409)
 
@@ -426,6 +475,21 @@ class AppleDeveloperAuth:
             headers.update(overrides)
         return headers
 
+    def _log_cookies(self, message="Current cookies:"):
+        """Helper method to log all cookies in the session"""
+        console.print(f"\n[cyan]{message}[/]")
+        for cookie in self.session.cookies:
+            expires = (
+                "never"
+                if cookie.expires is None
+                else f"expires {datetime.fromtimestamp(cookie.expires, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            )
+            console.print(
+                f"[dim cyan]- {cookie.name}={cookie.value[:20]}... "
+                f"(Domain: {cookie.domain}, {expires})[/]"
+            )
+        console.print("")
+
 
 def main():
     email = os.getenv("APPLE_ID")
@@ -445,12 +509,7 @@ def main():
     try:
         tester = AppleDeveloperAuth()
         if tester.authenticate(email, password):
-            if not os.getenv("APPLE_CLIENT_ID"):
-                os.environ["APPLE_CLIENT_ID"] = tester.client_id
-                console.print(f"Generated and saved new client_id: {tester.client_id}")
-
             console.print("[green]Authentication successful![/]")
-
             console.print("Verifying API access...")
             if tester.get_bundle_ids():
                 console.print("[green]Successfully verified API access![/]")
