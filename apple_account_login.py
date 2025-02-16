@@ -27,7 +27,7 @@ class LoggingCookieJar(cookielib.LWPCookieJar):
             else f"expires {datetime.fromtimestamp(cookie.expires, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"
         )
         console.print(
-            f"[dim cyan]Setting cookie: {cookie.name}={cookie.value[:5]}... "
+            f"[dim cyan]Setting cookie: {cookie.name}={cookie.value[:3]}... "
             f"(Domain: {cookie.domain}, {expires})[/]"
         )
         return super().set_cookie(cookie)
@@ -90,13 +90,6 @@ class AppleDeveloperAuth:
                 self.session_data = json.load(f)
         except:
             self.session_data = {}
-
-    def _sanitize_data(self, data: dict) -> dict:
-        """Sanitize sensitive data for logging"""
-        sensitive_keys = ["session_id", "scnt", "password", "securityCode", "email"]
-        if isinstance(data, dict):
-            return {k: "***" if k in sensitive_keys else v for k, v in data.items()}
-        return data
 
     def save_session(self) -> None:
         """Save session data to file."""
@@ -292,11 +285,6 @@ class AppleDeveloperAuth:
         init_response = self.session.post(
             f"{self.auth_endpoint}/signin/init", headers=headers, json=init_data
         )
-
-        console.print(f"[blue]Init response:[/] {init_response.status_code}")
-        # Only print non-sensitive parts of the response
-        safe_response = self._sanitize_data(init_response.json())
-        console.print(safe_response)
 
         # Process challenge
         body = init_response.json()
