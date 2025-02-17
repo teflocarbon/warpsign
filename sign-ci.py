@@ -6,7 +6,7 @@ import toml
 import base64
 from pathlib import Path
 from src.apple_account_login import AppleDeveloperAuth
-from src.github import GitHubSecrets
+from src.github import GitHubHandler
 from src.litterbox import LitterboxUploader
 from arguments import create_parser
 import shutil
@@ -108,7 +108,7 @@ def main():
     github_config = config["github"]
 
     # Initialize GitHub secrets manager
-    gh_secrets = GitHubSecrets(
+    gh_secrets = GitHubHandler(
         github_config["repo_owner"],
         github_config["repo_name"],
         github_config["access_token"],
