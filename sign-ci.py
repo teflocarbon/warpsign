@@ -69,6 +69,11 @@ def main():
     parser = create_ci_parser()
     args = parser.parse_args()
 
+    # Check for unsupported --icon argument
+    if args.icon:
+        console.print("[red]Error: --icon is not supported with CI at the moment[/]")
+        sys.exit(1)
+
     # Load configuration
     config = load_config()
     github_config = config["github"]
