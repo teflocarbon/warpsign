@@ -167,9 +167,25 @@ class DeveloperPortalAPI:
             "X-HTTP-Method-Override": "GET",
         }
         self._entitlements_cache = {}  # Add cache for entitlements
+        self._entitlements_cache = {}
+        self._teams_cache = []
+        self._certificates_cache = {}
+        self._bundle_ids_cache = {}
+        self._app_groups_cache = {}
+        self._icloud_containers_cache = {}
+        self._devices_cache = {}
 
-    def list_teams(self) -> List[Team]:
-        """List all teams the authenticated user has access to"""
+    def list_teams(self, bypass_cache: bool = False) -> List[Team]:
+        """
+        List all teams the authenticated user has access to
+
+        Args:
+            bypass_cache: If True, bypass cache and fetch fresh data
+        """
+        if not bypass_cache and self._teams_cache:
+            console.print("[cyan]Using cached teams")
+            return self._teams_cache
+
         console.print("[blue]Fetching teams from Developer Portal...")
 
         # Teams endpoint needs different headers
@@ -207,10 +223,19 @@ class DeveloperPortalAPI:
             )
 
         console.print(f"[green]Found {len(teams)} teams")
+
+        # Before returning, update cache
+        self._teams_cache = teams
         return teams
 
-    def list_certificates(self, team_id: str) -> List[Certificate]:
+    def list_certificates(
+        self, team_id: str, bypass_cache: bool = False
+    ) -> List[Certificate]:
         """List all certificates for a team"""
+        if not bypass_cache and team_id in self._certificates_cache:
+            console.print("[cyan]Using cached certificates")
+            return self._certificates_cache[team_id]
+
         console.print(f"[blue]Fetching certificates for team {team_id}...")
 
         url = "https://developer.apple.com/services-account/v1/certificates"
@@ -250,10 +275,19 @@ class DeveloperPortalAPI:
             )
 
         console.print(f"[green]Found {len(certificates)} certificates")
+
+        # Update cache before returning
+        self._certificates_cache[team_id] = certificates
         return certificates
 
-    def list_bundle_ids(self, team_id: str) -> List[BundleId]:
+    def list_bundle_ids(
+        self, team_id: str, bypass_cache: bool = False
+    ) -> List[BundleId]:
         """List bundle IDs for a team"""
+        if not bypass_cache and team_id in self._bundle_ids_cache:
+            console.print("[cyan]Using cached bundle IDs")
+            return self._bundle_ids_cache[team_id]
+
         console.print(f"[blue]Fetching bundle IDs for team {team_id}...")
 
         url = "https://developer.apple.com/services-account/v1/bundleIds"
@@ -293,10 +327,19 @@ class DeveloperPortalAPI:
         console.print(
             f"[green]Found {len(data.get('data', []))} bundle IDs (showing {len(bundle_ids)})"
         )
+
+        # Update cache before returning
+        self._bundle_ids_cache[team_id] = bundle_ids
         return bundle_ids
 
-    def list_app_group_ids(self, team_id: str) -> List[AppGroup]:
+    def list_app_group_ids(
+        self, team_id: str, bypass_cache: bool = False
+    ) -> List[AppGroup]:
         """List app group IDs for a team"""
+        if not bypass_cache and team_id in self._app_groups_cache:
+            console.print("[cyan]Using cached app groups")
+            return self._app_groups_cache[team_id]
+
         console.print(f"[blue]Fetching app groups for team {team_id}...")
 
         # Updated headers to match the request
@@ -339,10 +382,19 @@ class DeveloperPortalAPI:
         console.print(
             f"[green]Found {len(data.get('applicationGroupList', []))} app groups (showing {len(app_groups)})"
         )
+
+        # Update cache before returning
+        self._app_groups_cache[team_id] = app_groups
         return app_groups
 
-    def list_icloud_container_ids(self, team_id: str) -> List[ICloudContainer]:
+    def list_icloud_container_ids(
+        self, team_id: str, bypass_cache: bool = False
+    ) -> List[ICloudContainer]:
         """List iCloud container IDs for a team"""
+        if not bypass_cache and team_id in self._icloud_containers_cache:
+            console.print("[cyan]Using cached iCloud containers")
+            return self._icloud_containers_cache[team_id]
+
         console.print(f"[blue]Fetching iCloud containers for team {team_id}...")
 
         url = "https://developer.apple.com/services-account/v1/cloudContainers"
@@ -385,15 +437,23 @@ class DeveloperPortalAPI:
         console.print(
             f"[green]Found {len(data.get('data', []))} iCloud containers (showing {len(containers)})"
         )
+
+        # Update cache before returning
+        self._icloud_containers_cache[team_id] = containers
         return containers
 
     def list_devices(
-        self, team_id: str, device_types: List[str] = None
+        self, team_id: str, device_types: List[str] = None, bypass_cache: bool = False
     ) -> List[Device]:
         """
         List devices for a team
         device_types: List of device types to filter by (e.g. ['IPHONE', 'IPAD'])
         """
+        cache_key = f"{team_id}_{','.join(device_types or ['IPHONE', 'IPAD'])}"
+        if not bypass_cache and cache_key in self._devices_cache:
+            console.print("[cyan]Using cached devices")
+            return self._devices_cache[cache_key]
+
         console.print(f"[blue]Fetching devices for team {team_id}...")
 
         # Default to iOS devices if not specified
@@ -439,6 +499,9 @@ class DeveloperPortalAPI:
         console.print(
             f"[green]Found {len(data.get('data', []))} devices (showing {len(devices)})"
         )
+
+        # Update cache before returning
+        self._devices_cache[cache_key] = devices
         return devices
 
     def list_profiles(self, team_id: str) -> List[Profile]:
