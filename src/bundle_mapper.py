@@ -3,7 +3,7 @@ from enum import Enum, auto
 from typing import Dict, Optional, List, Tuple
 import random
 import string
-from rich.console import Console
+from logger import get_console
 
 
 class IDType(Enum):
@@ -30,7 +30,7 @@ class BundleMapping:
         original_base_id: str,
         randomize: bool = True,
     ):
-        self.console = Console()
+        self.console = get_console()
         self.team_id = new_team_id
         self.original_team_ids = original_team_ids  # Store all original team IDs
         self.original_main_bundle_id = original_base_id

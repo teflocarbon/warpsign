@@ -1,0 +1,8 @@
+[github]
+repo_owner = "XXXX"
+repo_name = "XXXX"
+access_token = "XXXX"
+
+[certificates]
+development_path = "certificates/development"
+distribution_path = "certificates/distribution"
