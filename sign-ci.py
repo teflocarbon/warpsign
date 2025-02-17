@@ -67,30 +67,31 @@ def download_and_rename_ipa(signed_url: str, original_path: Path) -> Path:
     """Download the signed IPA and rename it to match the original with -signed suffix"""
     console.print("\nDownloading signed IPA...")
 
-    # Create the new filename by adding -signed before the extension
     signed_path = (
         original_path.parent / f"{original_path.stem}-signed{original_path.suffix}"
     )
 
-    # Download the file
     response = requests.get(signed_url, stream=True)
     response.raise_for_status()
 
-    # Save the file with progress indication
     total_size = int(response.headers.get("content-length", 0))
-    with open(signed_path, "wb") as f:
-        if total_size == 0:
-            f.write(response.content)
-        else:
-            downloaded = 0
-            for data in response.iter_content(chunk_size=8192):
-                downloaded += len(data)
-                f.write(data)
-                done = int(50 * downloaded / total_size)
-                console.print(
-                    f"\rProgress: [{'=' * done}{' ' * (50-done)}] {downloaded}/{total_size} bytes",
-                    end="",
-                )
+
+    with console.status("[bold blue]Downloading...") as status:
+        with open(signed_path, "wb") as f:
+            if total_size == 0:
+                f.write(response.content)
+            else:
+                downloaded = 0
+                chunk_size = 1024 * 1024  # 1MB chunks
+                for data in response.iter_content(chunk_size=chunk_size):
+                    downloaded += len(data)
+                    f.write(data)
+                    percentage = (downloaded / total_size) * 100
+                    downloaded_mb = downloaded / (1024 * 1024)
+                    total_mb = total_size / (1024 * 1024)
+                    status.update(
+                        f"[bold blue]Downloaded: {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({percentage:.1f}%)"
+                    )
 
     console.print(f"\n[green]✓ Signed IPA downloaded to:[/] {signed_path}")
     return signed_path

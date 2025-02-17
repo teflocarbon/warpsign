@@ -4,8 +4,26 @@ import os
 import stat
 import requests
 import tempfile
+import platform
+import sys
 
-LITTERBOX_URL = "https://github.com/teflocarbon/litterbox-rust-upload/releases/download/release/litterbox-rust-upload-macOS-arm64"
+
+def get_platform_suffix():
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if system == "darwin":
+        system = "macos"
+    if machine == "x86_64":
+        machine = "amd64"
+    if machine == "aarch64":
+        machine = "arm64"
+
+    suffix = f"{system}-{machine}"
+    if system == "windows":
+        suffix += ".exe"
+
+    return suffix
 
 
 class LitterboxUploader:
@@ -15,7 +33,19 @@ class LitterboxUploader:
 
     def _ensure_binary(self):
         if not self.binary_path.exists():
-            response = requests.get(LITTERBOX_URL)
+            suffix = get_platform_suffix()
+            latest_url = (
+                "https://github.com/teflocarbon/litterbox-rust-upload/releases/latest"
+            )
+
+            # Get the redirect URL to determine latest version
+            response = requests.head(latest_url, allow_redirects=True)
+            latest_version = response.url.split("/")[-1]
+
+            # Construct binary URL
+            binary_url = f"https://github.com/teflocarbon/litterbox-rust-upload/releases/download/{latest_version}/litterbox-rust-upload-{latest_version}-{suffix}"
+
+            response = requests.get(binary_url)
             response.raise_for_status()
 
             with open(self.binary_path, "wb") as f:
