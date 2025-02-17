@@ -112,28 +112,24 @@ class CertHandler:
                     f"[red]Setting default keychain failed:[/]\nstdout: {default_result.stdout}\nstderr: {default_result.stderr}"
                 )
 
-        # Set keychain settings
+        # Set keychain settings with password to prevent prompts
         self.console.log(f"[yellow]Setting keychain settings: {self.keychain}")
-        # Set no-timeout (-t), no-lock-on-sleep (-l), and 6-hour timeout (-u)
         settings_result = subprocess.run(
-            ["security", "set-keychain-settings", "-t", "-l", "-u", self.keychain],
+            [
+                "security",
+                "set-keychain-settings",
+                "-p",
+                password,
+                "-lut",
+                "21600",
+                self.keychain,
+            ],
             capture_output=True,
             text=True,
         )
         if settings_result.returncode != 0:
             self.console.log(
                 f"[red]Settings failed:[/]\nstdout: {settings_result.stdout}\nstderr: {settings_result.stderr}"
-            )
-
-        # Add explicit timeout setting
-        timeout_result = subprocess.run(
-            ["security", "set-keychain-settings", "-lut", "21600", self.keychain],
-            capture_output=True,
-            text=True,
-        )
-        if timeout_result.returncode != 0:
-            self.console.log(
-                f"[red]Timeout setting failed:[/]\nstdout: {timeout_result.stdout}\nstderr: {timeout_result.stderr}"
             )
 
         # Add to search list
