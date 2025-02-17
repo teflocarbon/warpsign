@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import os
 from src.apple_account_login import AppleDeveloperAuth
-from src.local_signer import LocalSigner
+from src.sign_orchestrator import SignOrchestrator
 from arguments import create_parser, create_patching_options
 from logger import get_console
 
@@ -69,7 +69,7 @@ def main():
 
     # Create patching options and initialize signer
     options = create_patching_options(args)
-    signer = LocalSigner(
+    signer = SignOrchestrator(
         cert_type=os.getenv("WARPSIGN_CERT_TYPE"),
         cert_dir=os.getenv("WARPSIGN_CERT_DIR"),
     )

@@ -3,7 +3,7 @@
 from pathlib import Path
 import sys
 from src.app_patcher import PatchingOptions
-from src.local_signer import LocalSigner
+from src.sign_orchestrator import SignOrchestrator
 from src.apple_account_login import AppleDeveloperAuth
 import os
 from arguments import create_parser, create_patching_options
@@ -166,7 +166,7 @@ def main():
     if not console.input("\n[yellow]Press Enter to continue or Ctrl+C to cancel[/]"):
         try:
             # Initialize signer with authenticated session and certificate configuration
-            signer = LocalSigner(cert_type=cert_type, cert_dir=cert_dir)
+            signer = SignOrchestrator(cert_type=cert_type, cert_dir=cert_dir)
             signer.auth_session = auth  # Pass the authenticated session to the signer
             output_path = args.ipa_path.with_name(f"{args.ipa_path.stem}-signed.ipa")
             signer.sign_ipa(args.ipa_path, output_path, options)

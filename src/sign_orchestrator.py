@@ -24,7 +24,7 @@ import plistlib
 from logger import get_console
 
 
-class LocalSigner:
+class SignOrchestrator:
     def __init__(self, cert_type: str = "development", cert_dir: Path = None):
         """Initialize with optional profile type and certificate configuration"""
         self.console = get_console()
