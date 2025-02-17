@@ -12,11 +12,11 @@ import os
 class CertHandler:
     """Handles code signing certificates"""
 
-    def __init__(self, cert_type: str = None, cert_dir: Path = None):
+    def __init__(self, cert_type: str = None, cert_dir: Optional[str | Path] = None):
         self.console = Console()
 
-        # Get certificate directory from environment or parameter
-        self.cert_dir = cert_dir or Path(os.getenv("WARPSIGN_CERT_DIR", "certificates"))
+        # Get certificate directory from environment or parameter, ensure it's a Path
+        self.cert_dir = Path(cert_dir or os.getenv("WARPSIGN_CERT_DIR", "certificates"))
 
         # Get certificate type from environment or parameter
         self.cert_type = cert_type or os.getenv("WARPSIGN_CERT_TYPE", "development")

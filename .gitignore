@@ -10,3 +10,5 @@ NOTES.md
 /certificates/
 .DS_Store
 .vscode
+.warpsign/
+*.toml

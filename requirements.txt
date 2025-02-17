@@ -4,3 +4,4 @@ python-dotenv
 pysrp
 lief
 pillow
+toml

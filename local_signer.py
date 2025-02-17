@@ -31,6 +31,10 @@ class LocalSigner:
         self.patcher = None
         self.patching_options = None
 
+        # Convert cert_dir to Path if it's a string
+        if cert_dir:
+            cert_dir = Path(cert_dir)
+
         # Initialize cert handler with configuration
         self.cert_handler = CertHandler(cert_type=cert_type, cert_dir=cert_dir)
 
