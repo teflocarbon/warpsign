@@ -3,7 +3,7 @@ import shutil
 from uuid import uuid4
 from typing import Dict
 import plistlib
-from rich.console import Console
+from logger import get_console
 
 try:
     from PIL import Image
@@ -13,7 +13,7 @@ except ImportError:
 
 class IconHandler:
     def __init__(self):
-        self.console = Console()
+        self.console = get_console()
 
     # Thanks to asdfzxcvbn for the original implementation from cyan!
     # It saved me digging through the Info.plist.

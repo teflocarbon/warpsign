@@ -1,12 +1,12 @@
-from rich.console import Console
 from rich.table import Table
 import os
 from developer_portal_api import DeveloperPortalAPI
 from apple_account_login import AppleDeveloperAuth
 from dotenv import load_dotenv
 import random
+from logger import get_console
 
-console = Console()
+console = get_console()
 
 
 def test_api():

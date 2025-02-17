@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Set, Optional, Union
-from rich.console import Console
 import plistlib
 import subprocess
 import shutil
@@ -10,6 +9,7 @@ from collections import OrderedDict
 import lief
 from lief import MachO
 from enum import Enum, auto
+from logger import get_console
 
 
 class StatusBarStyle(Enum):
@@ -79,7 +79,7 @@ class AppPatcher:
     ):
         self.app_dir = app_dir
         self.opts = opts
-        self.console = Console()
+        self.console = get_console()
         self.bundle_mapper = bundle_mapper
         self.plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
         self.home_indicator_dylib = (

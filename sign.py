@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import sys
-from rich.console import Console
 from app_patcher import PatchingOptions
 from local_signer import LocalSigner
 from apple_account_login import AppleDeveloperAuth
@@ -10,10 +9,11 @@ import os
 from arguments import create_parser, create_patching_options
 from app_patcher import StatusBarStyle, UIStyle
 import getpass
+from logger import get_console
 
 
 def main():
-    console = Console()
+    console = get_console()
     parser = create_parser()
 
     # Fix for VS Code debug where arguments might be concatenated and escaped

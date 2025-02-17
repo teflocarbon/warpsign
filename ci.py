@@ -3,10 +3,10 @@
 from pathlib import Path
 import sys
 import os
-from rich.console import Console
 from apple_account_login import AppleDeveloperAuth
 from local_signer import LocalSigner
 from arguments import create_parser, create_patching_options
+from logger import get_console
 
 REQUIRED_ENV_VARS = [
     "WARPSIGN_SESSION_DIR",
@@ -18,7 +18,7 @@ REQUIRED_ENV_VARS = [
 
 
 def validate_environment():
-    console = Console()
+    console = get_console()
     missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
 
     if missing_vars:
@@ -37,7 +37,7 @@ def validate_environment():
 
 
 def main():
-    console = Console()
+    console = get_console()
 
     if not validate_environment():
         return 1

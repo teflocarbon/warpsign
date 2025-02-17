@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, List
 import subprocess
-from rich.console import Console
+from logger import get_console
 import random
 import string
 import re
@@ -13,7 +13,7 @@ class CertHandler:
     """Handles code signing certificates"""
 
     def __init__(self, cert_type: str = None, cert_dir: Optional[str | Path] = None):
-        self.console = Console()
+        self.console = get_console()
 
         # Get certificate directory from environment or parameter, ensure it's a Path
         self.cert_dir = Path(cert_dir or os.getenv("WARPSIGN_CERT_DIR", "certificates"))

@@ -4,7 +4,6 @@ import os
 import sys
 from pathlib import Path
 import tempfile
-from rich.console import Console
 from rich.prompt import Confirm, Prompt
 import subprocess
 import shutil
@@ -22,12 +21,13 @@ from developer_portal_api import DeveloperPortalAPI
 from apple_account_login import AppleDeveloperAuth
 from cert_handler import CertHandler
 import plistlib
+from logger import get_console
 
 
 class LocalSigner:
     def __init__(self, cert_type: str = "development", cert_dir: Path = None):
         """Initialize with optional profile type and certificate configuration"""
-        self.console = Console()
+        self.console = get_console()
         self.patcher = None
         self.patching_options = None
 
@@ -111,7 +111,7 @@ class LocalSigner:
         )  # Get all team IDs, there can be multiple.. for some reason..
 
         if not original_team_ids:
-            Console().print(
+            self.console.print(
                 "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
             )
 

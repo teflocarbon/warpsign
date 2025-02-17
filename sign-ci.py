@@ -5,15 +5,15 @@ import os
 import toml
 import base64
 from pathlib import Path
-from rich.console import Console
 from apple_account_login import AppleDeveloperAuth
 from github import GitHubSecrets
 from litterbox import LitterboxUploader
 from arguments import create_parser
 import shutil
 import requests
+from logger import get_console
 
-console = Console()
+console = get_console()
 
 
 def load_config():

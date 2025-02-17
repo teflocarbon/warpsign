@@ -2,11 +2,11 @@ import json
 import requests
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
-from rich.console import Console
 from rich.table import Table
 import os
+from logger import get_console
 
-console = Console()
+console = get_console()
 
 # Default settings for capabilities that require specific configurations
 CAPABILITY_SETTINGS = {
