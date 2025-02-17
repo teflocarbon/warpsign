@@ -25,16 +25,16 @@ import plistlib
 
 
 class LocalSigner:
-    def __init__(self, profile_type: str = "development"):
-        """Initialize with optional profile type (development or adhoc)"""
+    def __init__(self, cert_type: str = "development", cert_dir: Path = None):
+        """Initialize with optional profile type and certificate configuration"""
         self.console = Console()
-        self.patcher = None  # Will be initialized in sign_ipa
-        self.patching_options = None  # Will be set in sign_ipa
+        self.patcher = None
+        self.patching_options = None
 
-        # Initialize cert handler first since we need certificate info
-        self.cert_handler = CertHandler()
+        # Initialize cert handler with configuration
+        self.cert_handler = CertHandler(cert_type=cert_type, cert_dir=cert_dir)
 
-        # Determine profile type based on certificate type
+        # Rest of initialization based on certificate type
         cert_name = self.cert_handler.cert_common_name
         if cert_name == "Apple Development":
             self.profile_type = "development"
@@ -55,11 +55,44 @@ class LocalSigner:
             self.console.print("[red]Could not determine team ID from certificate")
             sys.exit(1)
 
-        # Initialize auth and API client
+        # Initialize authentication and API client
+        self._setup_authentication()
+
+    def _setup_authentication(self) -> None:
+        """Set up authentication using either session or password."""
         self.auth = AppleDeveloperAuth()
-        if not self.auth.authenticate(
-            os.getenv("APPLE_ID"), os.getenv("APPLE_PASSWORD")
-        ):
+
+        # Get authentication credentials
+        apple_id = os.getenv("APPLE_ID")
+        apple_password = os.getenv("APPLE_PASSWORD")
+        session_dir = os.getenv("WARPSIGN_SESSION_DIR")
+
+        if not apple_id:
+            self.console.print("[red]Error: APPLE_ID environment variable is not set")
+            sys.exit(1)
+
+        # Try loading existing session first if session directory is specified
+        if session_dir:
+            self.console.print(f"Attempting to load session from: {session_dir}")
+            self.auth.email = apple_id
+            try:
+                self.auth.load_session()
+                if self.auth.validate_token():
+                    self.console.print("[green]Successfully loaded existing session!")
+                    self.api = DeveloperPortalAPI(self.auth)
+                    return
+            except Exception as e:
+                self.console.print(f"[yellow]Failed to load session: {e}")
+
+        # Fall back to password auth if no valid session
+        if not apple_password:
+            self.console.print(
+                "[red]Error: No valid session and APPLE_PASSWORD not set"
+            )
+            sys.exit(1)
+
+        # Authenticate with password
+        if not self.auth.authenticate(apple_id, apple_password):
             self.console.print("[red]Authentication failed")
             sys.exit(1)
 

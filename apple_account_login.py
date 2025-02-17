@@ -43,9 +43,16 @@ class AppleDeveloperAuth:
         self.csrf = None
         self.csrf_ts = None
         self.email = None  # Store email for session management
+        self.session_data = {}  # Initialize empty session data
 
-        # First try to load existing session
-        self._cookie_directory = Path.home() / ".warpsign" / "sessions"
+        # Check for custom session directory from environment
+        custom_session_dir = os.getenv("WARPSIGN_SESSION_DIR")
+        if custom_session_dir:
+            self._cookie_directory = Path(custom_session_dir)
+            console.print(f"Using custom session directory: {custom_session_dir}")
+        else:
+            self._cookie_directory = Path.home() / ".warpsign" / "sessions"
+
         self._cookie_directory.mkdir(parents=True, exist_ok=True)
 
     def _get_session_id(self, email: str) -> str:
@@ -83,13 +90,21 @@ class AppleDeveloperAuth:
             raise ValueError("Email not set")
         return self._get_paths(self.email)[1]
 
-    def load_session(self) -> None:
+    def load_session(self) -> bool:
         """Load session data from file."""
         try:
             with open(self.session_path) as f:
                 self.session_data = json.load(f)
-        except:
+                # Try to load cookies if they exist
+                cookie_path = self._get_paths(self.email)[0]
+                if os.path.exists(cookie_path):
+                    self.session.cookies = LoggingCookieJar(filename=cookie_path)
+                    self.session.cookies.load(ignore_discard=True, ignore_expires=True)
+                return True
+        except Exception as e:
+            console.print(f"[yellow]Failed to load session: {e}")
             self.session_data = {}
+            return False
 
     def save_session(self) -> None:
         """Save session data to file."""
@@ -326,6 +341,12 @@ class AppleDeveloperAuth:
         if complete_response.status_code == 409:
             console.print("[yellow]2FA Required![/]")
 
+            if os.getenv("NON_INTERACTIVE"):
+                console.print(
+                    "[red]2FA required but NON_INTERACTIVE mode is enabled[/]"
+                )
+                return False
+
             session_id = complete_response.headers.get("X-Apple-ID-Session-Id")
             scnt = complete_response.headers.get("scnt")
 
@@ -482,20 +503,35 @@ class AppleDeveloperAuth:
 def main():
     email = os.getenv("APPLE_ID")
     password = os.getenv("APPLE_PASSWORD")
+    custom_session = os.getenv("WARPSIGN_SESSION_DIR")
 
     if not email:
         console.print("[red]Error: APPLE_ID environment variable is not set[/]")
         return False
 
+    tester = AppleDeveloperAuth()
+
+    # Try loading existing session first
+    if custom_session:
+        console.print(f"Attempting to load session from: {custom_session}")
+        tester.email = email
+        try:
+            tester.load_session()
+            if tester.validate_token():
+                console.print("[green]Successfully loaded existing session![/]")
+                return True
+        except Exception as e:
+            console.print(f"[yellow]Failed to load session: {e}[/]")
+
+    # Fall back to password auth if no valid session
     if not password:
-        console.print("[red]Error: APPLE_PASSWORD environment variable is not set[/]")
+        console.print("[red]Error: No valid session and APPLE_PASSWORD not set[/]")
         return False
 
     console.print(f"Using Apple ID: {email}")
     console.print("Starting Apple Developer Authentication")
 
     try:
-        tester = AppleDeveloperAuth()
         if tester.authenticate(email, password):
             console.print("[green]Authentication successful![/]")
             console.print("Verifying API access...")

@@ -12,14 +12,23 @@ import os
 class CertHandler:
     """Handles code signing certificates"""
 
-    def __init__(self, cert_dir: Path = Path("certificates")):
+    def __init__(self, cert_type: str = None, cert_dir: Path = None):
         self.console = Console()
-        self.cert_dir = cert_dir
+
+        # Get certificate directory from environment or parameter
+        self.cert_dir = cert_dir or Path(os.getenv("WARPSIGN_CERT_DIR", "certificates"))
+
+        # Get certificate type from environment or parameter
+        self.cert_type = cert_type or os.getenv("WARPSIGN_CERT_TYPE", "development")
+        if self.cert_type not in ["development", "distribution"]:
+            raise ValueError(
+                "Certificate type must be either 'development' or 'distribution'"
+            )
+
         self.dist_cert: Optional[Path] = None
         self.keychain: Optional[str] = None
         self.signing_identity: Optional[str] = None
-        self.cert_serial: Optional[str] = None  # Add serial number storage
-        # Add new certificate info storage
+        self.cert_serial: Optional[str] = None
         self.cert_common_name: Optional[str] = None
         self.cert_org_unit: Optional[str] = None
         self.cert_org: Optional[str] = None
@@ -27,11 +36,8 @@ class CertHandler:
         # Clean up any old keychains first
         self._cleanup_old_keychains()
 
-        # Let user select certificate type if both are available
-        cert_type = self._select_certificate_type()
-
         # Load certificate and its password
-        cert_dir = self.cert_dir / cert_type
+        cert_dir = self.cert_dir / self.cert_type
         cert_pass_file = cert_dir / "cert_pass.txt"
 
         try:
@@ -40,33 +46,12 @@ class CertHandler:
         except FileNotFoundError:
             raise Exception(f"Certificate password file not found: {cert_pass_file}")
 
-        self._load_certs(cert_type)
+        self._load_certs()
         self._setup_keychain()
 
-    def _select_certificate_type(self) -> str:
-        """Let user select certificate type if both development and distribution are available"""
-        dist_exists = (self.cert_dir / "distribution").exists()
-        dev_exists = (self.cert_dir / "development").exists()
-
-        if dist_exists and dev_exists:
-            from rich.prompt import Prompt
-
-            cert_type = Prompt.ask(
-                "Select certificate type",
-                choices=["development", "distribution"],
-                default="distribution",
-            )
-            return cert_type
-        elif dist_exists:
-            return "distribution"
-        elif dev_exists:
-            return "development"
-        else:
-            raise Exception("No certificates found in certificates directory")
-
-    def _load_certs(self, cert_type: str) -> None:
-        """Load available certificates"""
-        cert_dir = self.cert_dir / cert_type
+    def _load_certs(self) -> None:
+        """Load certificates from specified directory"""
+        cert_dir = self.cert_dir / self.cert_type
         if not cert_dir.exists():
             raise Exception(f"Certificate directory not found: {cert_dir}")
 
@@ -75,7 +60,7 @@ class CertHandler:
             raise Exception(f"Certificate not found: {cert}")
 
         self.dist_cert = cert
-        self.console.log(f"[green]Loaded {cert_type} certificate:[/] {cert}")
+        self.console.log(f"[green]Loaded {self.cert_type} certificate:[/] {cert}")
 
     def _setup_keychain(self) -> None:
         """Create and configure temporary keychain"""
