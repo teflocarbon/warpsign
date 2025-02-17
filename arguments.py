@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from typing import Optional
+from app_patcher import PatchingOptions, StatusBarStyle, UIStyle
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -132,3 +133,34 @@ Examples:
     )
 
     return parser
+
+
+def create_patching_options(args) -> PatchingOptions:
+    """Convert parsed arguments to PatchingOptions"""
+    return PatchingOptions(
+        encode_ids=args.encode_ids,
+        patch_ids=args.patch_ids,
+        force_original_id=args.force_original_id,
+        patch_debug=args.patch_debug,
+        patch_all_devices=args.patch_all_devices,
+        patch_file_sharing=args.patch_file_sharing,
+        patch_promotion=args.patch_promotion,
+        patch_fullscreen=args.patch_fullscreen,
+        patch_orientation=args.patch_orientation,
+        patch_game_mode=args.patch_game_mode,
+        hide_home_indicator=args.hide_home_indicator,
+        inject_plugins_patcher=args.inject_plugins_patcher,
+        bundle_name=args.bundle_name,
+        icon_path=args.icon,
+        patch_status_bar=(
+            StatusBarStyle(args.patch_status_bar)
+            if args.patch_status_bar
+            else StatusBarStyle.DEFAULT
+        ),
+        patch_user_interface_style=(
+            UIStyle(args.patch_user_interface_style)
+            if args.patch_user_interface_style
+            else UIStyle.AUTOMATIC
+        ),
+        remove_url_schemes=args.remove_url_schemes,
+    )
