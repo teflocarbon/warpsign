@@ -4,7 +4,6 @@ import os
 import sys
 from pathlib import Path
 import tempfile
-from rich.console import Console
 from rich.prompt import Confirm, Prompt
 import subprocess
 import shutil
@@ -14,20 +13,21 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from ipa_inspector import IPAInspector
-from bundle_mapper import BundleMapping, IDType
-from entitlements_processor import EntitlementsProcessor
-from app_patcher import AppPatcher, PatchingOptions
-from developer_portal_api import DeveloperPortalAPI
-from apple_account_login import AppleDeveloperAuth
-from cert_handler import CertHandler
+from src.ipa_inspector import IPAInspector
+from src.bundle_mapper import BundleMapping, IDType
+from src.entitlements_processor import EntitlementsProcessor
+from src.app_patcher import AppPatcher, PatchingOptions
+from src.developer_portal_api import DeveloperPortalAPI
+from src.apple_account_login import AppleDeveloperAuth
+from src.cert_handler import CertHandler
 import plistlib
+from logger import get_console
 
 
-class LocalSigner:
+class SignOrchestrator:
     def __init__(self, cert_type: str = "development", cert_dir: Path = None):
         """Initialize with optional profile type and certificate configuration"""
-        self.console = Console()
+        self.console = get_console()
         self.patcher = None
         self.patching_options = None
 
@@ -111,7 +111,7 @@ class LocalSigner:
         )  # Get all team IDs, there can be multiple.. for some reason..
 
         if not original_team_ids:
-            Console().print(
+            self.console.print(
                 "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
             )
 

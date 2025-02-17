@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Set
-from rich.console import Console
 import json
+from logger import get_console
 
 
 @dataclass
@@ -19,7 +19,7 @@ class EntitlementsProcessor:
 
     def __init__(self, capabilities_data_or_path, profile_type: str = "development"):
         """Initialize with API data or path to capabilities.json"""
-        self.console = Console()
+        self.console = get_console()
         self.capabilities: Dict[str, Capability] = {}  # entitlement key -> capability
         self.profile_type = profile_type.lower()
 

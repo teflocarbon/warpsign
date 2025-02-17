@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, List
 import subprocess
-from rich.console import Console
+from logger import get_console
 import random
 import string
 import re
@@ -13,7 +13,7 @@ class CertHandler:
     """Handles code signing certificates"""
 
     def __init__(self, cert_type: str = None, cert_dir: Optional[str | Path] = None):
-        self.console = Console()
+        self.console = get_console()
 
         # Get certificate directory from environment or parameter, ensure it's a Path
         self.cert_dir = Path(cert_dir or os.getenv("WARPSIGN_CERT_DIR", "certificates"))
@@ -99,16 +99,80 @@ class CertHandler:
                 f"[red]Unlock failed:[/]\nstdout: {unlock_result.stdout}\nstderr: {unlock_result.stderr}"
             )
 
-        # Set keychain settings
+        # Set as default keychain if running in GitHub Actions
+        if os.getenv("USING_GH_ACTIONS") == "1":
+            self.console.log(f"[yellow]Setting as default keychain: {self.keychain}")
+            default_result = subprocess.run(
+                ["security", "default-keychain", "-s", self.keychain],
+                capture_output=True,
+                text=True,
+            )
+            if default_result.returncode != 0:
+                self.console.log(
+                    f"[red]Setting default keychain failed:[/]\nstdout: {default_result.stdout}\nstderr: {default_result.stderr}"
+                )
+
+        # Set keychain settings with correct flags
         self.console.log(f"[yellow]Setting keychain settings: {self.keychain}")
         settings_result = subprocess.run(
-            ["security", "set-keychain-settings", self.keychain],
+            [
+                "security",
+                "set-keychain-settings",
+                "-lut",  # lock on sleep, user lock, with timeout
+                "21600",  # 6 hour timeout
+                self.keychain,
+            ],
             capture_output=True,
             text=True,
         )
         if settings_result.returncode != 0:
             self.console.log(
                 f"[red]Settings failed:[/]\nstdout: {settings_result.stdout}\nstderr: {settings_result.stderr}"
+            )
+
+        # Import certificate with additional flags for codesign and security access
+        self.console.log(f"[yellow]Importing certificate: {self.dist_cert}")
+        import_result = subprocess.run(
+            [
+                "security",
+                "import",
+                str(self.dist_cert),
+                "-k",
+                self.keychain,
+                "-f",
+                "pkcs12",
+                "-A",  # Allow all applications to access the keys
+                "-T",  # Specify trusted applications
+                "/usr/bin/codesign",
+                "-T",
+                "/usr/bin/security",
+                "-P",
+                self.cert_password,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if import_result.returncode != 0:
+            self.console.log(f"[red]Import failed:[/]\nstdout: {import_result.stdout}")
+
+        # Allow codesign to access keychain without prompting - corrected version
+        self.console.log("[yellow]Setting keychain partition list")
+        partition_result = subprocess.run(
+            [
+                "security",
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:",  # Removed codesign: from partition list
+                "-k",
+                password,
+                self.keychain,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if partition_result.returncode != 0:
+            self.console.log(
+                f"[red]Partition list setup failed:[/]\nstdout: {partition_result.stdout}\nstderr: {partition_result.stderr}"
             )
 
         # Add to search list
@@ -124,28 +188,21 @@ class CertHandler:
                 f"[red]Search list update failed:[/]\nstdout: {search_result.stdout}\nstderr: {search_result.stderr}"
             )
 
-        # Import certificate
-        self.console.log(f"[yellow]Importing certificate: {self.dist_cert}")
-        import_result = subprocess.run(
+        # Update keychain list with both the new keychain and login.keychain
+        self.console.log("[yellow]Updating keychain list")
+        subprocess.run(
             [
                 "security",
-                "import",
-                str(self.dist_cert),
-                "-P",
-                self.cert_password,
-                "-A",
-                "-k",
+                "list-keychains",
+                "-d",
+                "user",
+                "-s",
                 self.keychain,
-                "-t",
-                "cert",
-                "-f",
-                "pkcs12",
+                "login.keychain",
             ],
+            check=True,
             capture_output=True,
-            text=True,
         )
-        if import_result.returncode != 0:
-            self.console.log(f"[red]Import failed:[/]\nstdout: {import_result.stdout}")
 
         # After certificate import, extract info and setup codesigning
         self._extract_certificate_info()

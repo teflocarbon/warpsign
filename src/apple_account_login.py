@@ -7,16 +7,16 @@ import srp
 import requests
 import getpass
 import http.cookiejar as cookielib
-from rich.console import Console
 import re
 from typing import Optional
 from dotenv import load_dotenv
 from datetime import datetime, timezone  # Add this import
+from logger import get_console
 
 # Load environment variables from .env file
 load_dotenv()
 
-console = Console()
+console = get_console()
 
 
 class LoggingCookieJar(cookielib.LWPCookieJar):

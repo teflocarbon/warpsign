@@ -1,15 +1,15 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Set, Optional, Union
-from rich.console import Console
 import plistlib
 import subprocess
 import shutil
-from bundle_mapper import BundleMapping, IDType
+from src.bundle_mapper import BundleMapping, IDType
 from collections import OrderedDict
 import lief
 from lief import MachO
 from enum import Enum, auto
+from logger import get_console
 
 
 class StatusBarStyle(Enum):
@@ -79,13 +79,13 @@ class AppPatcher:
     ):
         self.app_dir = app_dir
         self.opts = opts
-        self.console = Console()
+        self.console = get_console()
         self.bundle_mapper = bundle_mapper
         self.plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
         self.home_indicator_dylib = (
             Path(__file__).parent / "patches" / "ForceHideHomeIndicator.dylib"
         )
-        from icon_handler import IconHandler
+        from src.icon_handler import IconHandler
 
         self.icon_handler = IconHandler()
         if opts.inject_plugins_patcher and not self.plugins_dylib.exists():
