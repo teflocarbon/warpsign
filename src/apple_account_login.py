@@ -26,10 +26,6 @@ class LoggingCookieJar(cookielib.LWPCookieJar):
             if cookie.expires is None
             else f"expires {datetime.fromtimestamp(cookie.expires, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"
         )
-        console.print(
-            f"[dim cyan]Setting cookie: {cookie.name}={cookie.value[:3]}... "
-            f"(Domain: {cookie.domain}, {expires})[/]"
-        )
         return super().set_cookie(cookie)
 
 

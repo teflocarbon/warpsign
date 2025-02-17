@@ -87,6 +87,9 @@ class GitHubHandler:
 
         return run_uuid
 
+    # GitHub Actions is bullshit and doesn't provide a way to get the run when triggering a workflow?
+    # How did that get into production?
+
     def get_workflow_run(self, workflow_id: str, run_uuid=None):
         """Get the run for a workflow matching the UUID"""
         url = f"{self.base_url}/repos/{self.owner}/{self.repo}/actions/workflows/{workflow_id}/runs"
@@ -124,6 +127,8 @@ class GitHubHandler:
                 return run
 
         return runs[0] if runs else None
+
+    # This code is awful, but it works and GitHub's API is a pain.
 
     def wait_for_workflow(
         self, workflow_id: str, run_uuid: str = None, timeout: int = 1800
@@ -184,19 +189,10 @@ class GitHubHandler:
                         if jobs_response.status_code == 200:
                             jobs = jobs_response.json().get("jobs", [])
                             if jobs:
-                                current_job = jobs[0]  # Usually only one job
-                                print(
-                                    f"Current step: {current_job.get('name', 'Unknown')}"
-                                )
-                                for step in current_job.get("steps", []):
-                                    if step.get("status") == "completed":
-                                        print(f"✓ {step['name']}")
-                                    elif step.get("status") == "in_progress":
-                                        print(f"⋯ {step['name']}")
+                                current_job = jobs[0]  # We only have one job.
 
             if status == "completed":
                 if conclusion == "success":
-                    time.sleep(5)  # Wait for outputs to be available
                     return run
                 elif conclusion == "failure":
                     error_msg = f"\nWorkflow failed!"
