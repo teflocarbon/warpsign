@@ -39,10 +39,12 @@ class IconHandler:
 
             # Create resized icons
             with Image.open(icon_path) as img:
-                # iPhone icon (120x120)
+                # iPhone icons (120x120 and 180x180)
                 img.resize((120, 120)).save(app_dir / f"{i60}@2x.png", "PNG")
-                # iPad icon (152x152)
+                img.resize((180, 180)).save(app_dir / f"{i60}@3x.png", "PNG")
+                # iPad icons (152x152 and 167x167)
                 img.resize((152, 152)).save(app_dir / f"{i76}@2x~ipad.png", "PNG")
+                img.resize((167, 167)).save(app_dir / f"{i76}@2.17x~ipad.png", "PNG")
 
             self.console.print("[green]Generated resized app icons")
 
