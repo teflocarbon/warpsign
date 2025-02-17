@@ -53,11 +53,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 Install required packages:
 
-```bash
-pip install rich requests pysrp python-dotenv lief pillow
-```
-
-Or use the requirements file:
+Download all requirements using the requirements.txt file.
 
 ```bash
 pip install -r requirements.txt
