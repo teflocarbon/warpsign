@@ -130,6 +130,31 @@ class CertHandler:
                 f"[red]Settings failed:[/]\nstdout: {settings_result.stdout}\nstderr: {settings_result.stderr}"
             )
 
+        # Import certificate with additional flags for codesign and security access
+        self.console.log(f"[yellow]Importing certificate: {self.dist_cert}")
+        import_result = subprocess.run(
+            [
+                "security",
+                "import",
+                str(self.dist_cert),
+                "-k",
+                self.keychain,
+                "-f",
+                "pkcs12",
+                "-A",  # Allow all applications to access the keys
+                "-T",  # Specify trusted applications
+                "/usr/bin/codesign",
+                "-T",
+                "/usr/bin/security",
+                "-P",
+                self.cert_password,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if import_result.returncode != 0:
+            self.console.log(f"[red]Import failed:[/]\nstdout: {import_result.stdout}")
+
         # Allow codesign to access keychain without prompting - corrected version
         self.console.log("[yellow]Setting keychain partition list")
         partition_result = subprocess.run(
@@ -163,28 +188,21 @@ class CertHandler:
                 f"[red]Search list update failed:[/]\nstdout: {search_result.stdout}\nstderr: {search_result.stderr}"
             )
 
-        # Import certificate
-        self.console.log(f"[yellow]Importing certificate: {self.dist_cert}")
-        import_result = subprocess.run(
+        # Update keychain list with both the new keychain and login.keychain
+        self.console.log("[yellow]Updating keychain list")
+        subprocess.run(
             [
                 "security",
-                "import",
-                str(self.dist_cert),
-                "-P",
-                self.cert_password,
-                "-A",
-                "-k",
+                "list-keychains",
+                "-d",
+                "user",
+                "-s",
                 self.keychain,
-                "-t",
-                "cert",
-                "-f",
-                "pkcs12",
+                "login.keychain",
             ],
+            check=True,
             capture_output=True,
-            text=True,
         )
-        if import_result.returncode != 0:
-            self.console.log(f"[red]Import failed:[/]\nstdout: {import_result.stdout}")
 
         # After certificate import, extract info and setup codesigning
         self._extract_certificate_info()
