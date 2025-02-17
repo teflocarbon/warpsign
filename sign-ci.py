@@ -11,6 +11,7 @@ from github import GitHubSecrets
 from litterbox import LitterboxUploader
 from arguments import create_parser
 import shutil
+import requests
 
 console = Console()
 
@@ -60,6 +61,39 @@ def save_base64_file(content: str, filename: str):
     with open(file_path, "w") as f:
         f.write(content)
     return file_path
+
+
+def download_and_rename_ipa(signed_url: str, original_path: Path) -> Path:
+    """Download the signed IPA and rename it to match the original with -signed suffix"""
+    console.print("\nDownloading signed IPA...")
+
+    # Create the new filename by adding -signed before the extension
+    signed_path = (
+        original_path.parent / f"{original_path.stem}-signed{original_path.suffix}"
+    )
+
+    # Download the file
+    response = requests.get(signed_url, stream=True)
+    response.raise_for_status()
+
+    # Save the file with progress indication
+    total_size = int(response.headers.get("content-length", 0))
+    with open(signed_path, "wb") as f:
+        if total_size == 0:
+            f.write(response.content)
+        else:
+            downloaded = 0
+            for data in response.iter_content(chunk_size=8192):
+                downloaded += len(data)
+                f.write(data)
+                done = int(50 * downloaded / total_size)
+                console.print(
+                    f"\rProgress: [{'=' * done}{' ' * (50-done)}] {downloaded}/{total_size} bytes",
+                    end="",
+                )
+
+    console.print(f"\n[green]✓ Signed IPA downloaded to:[/] {signed_path}")
+    return signed_path
 
 
 def main():
@@ -204,27 +238,42 @@ def main():
         }
 
         # Trigger the workflow and wait for completion
-        gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
+        run_uuid = gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
         console.print("[green]Successfully triggered signing workflow![/]")
         console.print("Waiting for workflow to complete...")
 
         try:
-            run = gh_secrets.wait_for_workflow("sign.yml")
+            console.print("\n[bold blue]Monitoring workflow execution...[/]")
+            run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
+
+            console.print("\n[bold blue]Fetching workflow outputs...[/]")
             outputs = gh_secrets.get_workflow_outputs(run["id"])
 
-            if "signed_ipa_url" in outputs:
+            if "url" in outputs and outputs["url"]:
+                console.print(f"\n[green]✓ Signing completed successfully![/]")
+                console.print(f"[green]Signed IPA available at:[/] {outputs['url']}")
+
+                # Download and rename the signed IPA
+                signed_path = download_and_rename_ipa(
+                    outputs["url"], Path(args.ipa_path)
+                )
                 console.print(
-                    f"\n[green]Signed IPA available at:[/] {outputs['signed_ipa_url']}"
+                    f"\n[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
                 )
             else:
                 console.print(
-                    "[yellow]Warning: Could not find signed IPA URL in workflow outputs[/]"
+                    "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
                 )
+                console.print(
+                    f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run['id']}"
+                )
+
         except TimeoutError:
-            console.print("[red]Workflow timed out![/]")
+            console.print("[red]❌ Workflow timed out![/]")
             sys.exit(1)
         except Exception as e:
-            console.print(f"[red]Error while waiting for workflow: {str(e)}[/]")
+            console.print("[red]❌ Workflow failed![/]")
+            console.print(str(e))
             sys.exit(1)
 
         console.print(
