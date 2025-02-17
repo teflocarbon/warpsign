@@ -287,25 +287,25 @@ class CertHandler:
         self.console.log(f"[green]Got signing identity:[/] {self.signing_identity}")
 
         # Test codesign access
-        # self._test_codesign()
+        self._test_codesign()
 
-    # def _test_codesign(self) -> None:
-    #     """Test codesigning with a temporary file"""
-    #     self.console.log("[yellow]Testing codesign access...")
-    #     with tempfile.NamedTemporaryFile() as test_file:
-    #         test_file.write(b"test")
-    #         test_file.flush()
-    #         try:
-    #             test_result = subprocess.run(
-    #                 ["codesign", "-s", self.signing_identity, test_file.name],
-    #                 capture_output=True,
-    #                 text=True,
-    #             )
-    #             self.console.log(f"[green]Codesign test succeeded[/]")
-    #         except subprocess.CalledProcessError as e:
-    #             self.console.log(
-    #                 f"[red]Codesign test failed:[/]\nstdout: {e.stdout}\nstderr: {e.stderr}"
-    #             )
+    def _test_codesign(self) -> None:
+        """Test codesigning with a temporary file"""
+        self.console.log("[yellow]Testing codesign access...")
+        with tempfile.NamedTemporaryFile() as test_file:
+            test_file.write(b"test")
+            test_file.flush()
+            try:
+                test_result = subprocess.run(
+                    ["codesign", "-s", self.signing_identity, test_file.name],
+                    capture_output=True,
+                    text=True,
+                )
+                self.console.log(f"[green]Codesign test succeeded[/]")
+            except subprocess.CalledProcessError as e:
+                self.console.log(
+                    f"[red]Codesign test failed:[/]\nstdout: {e.stdout}\nstderr: {e.stderr}"
+                )
 
     def cleanup(self, force: bool = False) -> None:
         """Explicitly clean up keychain - call this instead of relying on __del__"""
