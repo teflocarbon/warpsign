@@ -28,6 +28,7 @@ A lightning-fast iOS app signing solution that leverages the Apple Developer Por
 - 🛡️ **MFA Support**: Handles Apple Developer Portal login with 2FA authentication
 - 🔧 **Binary Patching**: Fixes apps that require their original identifiers
 - 📱 **Push Support**: Enable push notifications with distribution certificates
+- 🖥️ **Flexible Signing**: Local signing on Mac or remote signing via CI - no Mac required!
 
 ## 🎯 Based on SignTools-CI
 
@@ -44,10 +45,19 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 ## 💻 System Requirements
 
+### Local Signing
+
 - macOS 11.0 or later (required for code signing)
 - Command Line Tools for Xcode (run `xcode-select --install`)
 - At least 1GB free disk space for temporary files
 - Active internet connection for Developer Portal API access
+
+### CI Signing
+
+- Any operating system (Windows, macOS, or Linux)
+- Python 3.8 or higher
+- Active internet connection
+- GitHub account with repository access
 
 ## 📦 Dependencies
 
@@ -110,6 +120,30 @@ Basic signing:
 ```bash
 python3 sign.py my-app.ipa
 ```
+
+### CI Usage
+
+1. Copy `config.toml.sample` to `config.toml`:
+
+```bash
+cp config.toml.sample config.toml
+```
+
+2. Edit `config.toml` with your GitHub token and settings:
+
+```toml
+github_token = "your-github-token"
+repository = "your-username/your-repo"
+workflow = "sign.yml"
+```
+
+3. Run the CI signing script:
+
+```bash
+python3 sign-ci.py my-app.ipa
+```
+
+## Examples
 
 Enable debug mode (requires development certificate):
 
