@@ -52,6 +52,16 @@ def create_ci_parser():
     return parser
 
 
+def save_base64_file(content: str, filename: str):
+    base64_dir = Path(__file__).parent / "base64"
+    base64_dir.mkdir(exist_ok=True)
+
+    file_path = base64_dir / filename
+    with open(file_path, "w") as f:
+        f.write(content)
+    return file_path
+
+
 def main():
     console.print("[bold blue]WarpSign CI[/]")
 
@@ -108,13 +118,24 @@ def main():
 
     # Update GitHub secrets with the session files
     try:
-        with open(cookie_path, "r") as f:
-            cookie_content = f.read()
-        with open(session_path, "r") as f:
-            session_content = f.read()
+        with open(cookie_path, "rb") as f:
+            cookie_content = base64.b64encode(f.read()).decode("utf-8")
+        with open(session_path, "rb") as f:
+            session_content = base64.b64encode(f.read()).decode("utf-8")
 
-        gh_secrets.update_secret("APPLE_AUTH_COOKIE", cookie_content)
+        # Save local copies
+        cookie_saved = save_base64_file(cookie_content, "apple_auth_cookies.b64")
+        session_saved = save_base64_file(session_content, "apple_auth_session.b64")
+        console.print(f"[blue]Saved Base64 files locally:[/]")
+        console.print(f"Cookie: {cookie_saved}")
+        console.print(f"Session: {session_saved}")
+
+        # Get the auth ID from the AppleDeveloperAuth class
+        auth_id = auth._get_session_id(apple_id)
+
+        gh_secrets.update_secret("APPLE_AUTH_COOKIES", cookie_content)
         gh_secrets.update_secret("APPLE_AUTH_SESSION", session_content)
+        gh_secrets.update_secret("APPLE_AUTH_ID", auth_id)
 
         console.print("[green]Successfully updated GitHub secrets![/]")
     except Exception as e:
@@ -155,28 +176,59 @@ def main():
         arg_dict = vars(args)
         signing_args = []
         for key, value in arg_dict.items():
+            # Skip default values and specific keys we don't want to pass
             if key in (
                 "ipa_path",
                 "certificate",
-            ):  # Skip these as they're handled separately
+                "encode_ids",  # Skip default values
+                "patch_ids",  # Skip default values
+            ):
                 continue
-            if isinstance(value, bool) and value:
-                signing_args.append(f"--{key.replace('_', '-')}")
+            # Only include boolean flags if they're True and not default values
+            if isinstance(value, bool):
+                if value and key not in (
+                    "encode_ids",
+                    "patch_ids",
+                ):  # Ensure we don't include defaults
+                    signing_args.append(f"--{key.replace('_', '-')}")
+            # Include non-boolean values if they're set
             elif isinstance(value, (str, Path)) and value:
                 signing_args.append(f"--{key.replace('_', '-')} {value}")
 
-        # Trigger the workflow
+        # Create workflow inputs dictionary
         workflow_inputs = {
             "ipa_url": ipa_url,
             "cert_type": args.certificate,
-            "apple_id": apple_id,
             "signing_args": " ".join(signing_args),
+            "apple_id": apple_id,
         }
 
+        # Trigger the workflow and wait for completion
         gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
         console.print("[green]Successfully triggered signing workflow![/]")
+        console.print("Waiting for workflow to complete...")
+
+        try:
+            run = gh_secrets.wait_for_workflow("sign.yml")
+            outputs = gh_secrets.get_workflow_outputs(run["id"])
+
+            if "signed_ipa_url" in outputs:
+                console.print(
+                    f"\n[green]Signed IPA available at:[/] {outputs['signed_ipa_url']}"
+                )
+            else:
+                console.print(
+                    "[yellow]Warning: Could not find signed IPA URL in workflow outputs[/]"
+                )
+        except TimeoutError:
+            console.print("[red]Workflow timed out![/]")
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"[red]Error while waiting for workflow: {str(e)}[/]")
+            sys.exit(1)
+
         console.print(
-            f"You can monitor the progress at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions"
+            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions"
         )
 
     except Exception as e:
