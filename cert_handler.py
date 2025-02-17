@@ -99,16 +99,41 @@ class CertHandler:
                 f"[red]Unlock failed:[/]\nstdout: {unlock_result.stdout}\nstderr: {unlock_result.stderr}"
             )
 
+        # Set as default keychain if running in GitHub Actions
+        if os.getenv("USING_GH_ACTIONS") == "1":
+            self.console.log(f"[yellow]Setting as default keychain: {self.keychain}")
+            default_result = subprocess.run(
+                ["security", "default-keychain", "-s", self.keychain],
+                capture_output=True,
+                text=True,
+            )
+            if default_result.returncode != 0:
+                self.console.log(
+                    f"[red]Setting default keychain failed:[/]\nstdout: {default_result.stdout}\nstderr: {default_result.stderr}"
+                )
+
         # Set keychain settings
         self.console.log(f"[yellow]Setting keychain settings: {self.keychain}")
+        # Set no-timeout (-t), no-lock-on-sleep (-l), and 6-hour timeout (-u)
         settings_result = subprocess.run(
-            ["security", "set-keychain-settings", self.keychain],
+            ["security", "set-keychain-settings", "-t", "-l", "-u", self.keychain],
             capture_output=True,
             text=True,
         )
         if settings_result.returncode != 0:
             self.console.log(
                 f"[red]Settings failed:[/]\nstdout: {settings_result.stdout}\nstderr: {settings_result.stderr}"
+            )
+
+        # Add explicit timeout setting
+        timeout_result = subprocess.run(
+            ["security", "set-keychain-settings", "-lut", "21600", self.keychain],
+            capture_output=True,
+            text=True,
+        )
+        if timeout_result.returncode != 0:
+            self.console.log(
+                f"[red]Timeout setting failed:[/]\nstdout: {timeout_result.stdout}\nstderr: {timeout_result.stderr}"
             )
 
         # Add to search list
@@ -199,7 +224,7 @@ class CertHandler:
         # Parse the subject string
         subject = result.stdout.strip()
         if subject.startswith("subject="):
-            subject = subject[8:].strip()
+            subject = subject[8:].trip()
 
         # Split fields by comma and parse each one
         fields = {}
