@@ -130,22 +130,25 @@ class CertHandler:
                 f"[red]Settings failed:[/]\nstdout: {settings_result.stdout}\nstderr: {settings_result.stderr}"
             )
 
-        # Allow codesign to access keychain without prompting
+        # Allow codesign to access keychain without prompting - corrected version
         self.console.log("[yellow]Setting keychain partition list")
-        subprocess.run(
+        partition_result = subprocess.run(
             [
                 "security",
                 "set-key-partition-list",
                 "-S",
-                "apple-tool:,apple:,codesign:",
-                "-s",
+                "apple-tool:,apple:",  # Removed codesign: from partition list
                 "-k",
                 password,
                 self.keychain,
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
+        if partition_result.returncode != 0:
+            self.console.log(
+                f"[red]Partition list setup failed:[/]\nstdout: {partition_result.stdout}\nstderr: {partition_result.stderr}"
+            )
 
         # Add to search list
         self.console.log(f"[yellow]Adding to keychain search list: {self.keychain}")
