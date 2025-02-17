@@ -112,16 +112,14 @@ class CertHandler:
                     f"[red]Setting default keychain failed:[/]\nstdout: {default_result.stdout}\nstderr: {default_result.stderr}"
                 )
 
-        # Set keychain settings with password to prevent prompts
+        # Set keychain settings with correct flags
         self.console.log(f"[yellow]Setting keychain settings: {self.keychain}")
         settings_result = subprocess.run(
             [
                 "security",
                 "set-keychain-settings",
-                "-p",
-                password,
-                "-lut",
-                "21600",
+                "-lut",  # lock on sleep, user lock, with timeout
+                "21600",  # 6 hour timeout
                 self.keychain,
             ],
             capture_output=True,
@@ -220,7 +218,7 @@ class CertHandler:
         # Parse the subject string
         subject = result.stdout.strip()
         if subject.startswith("subject="):
-            subject = subject[8:].trip()
+            subject = subject[8:].strip()
 
         # Split fields by comma and parse each one
         fields = {}
