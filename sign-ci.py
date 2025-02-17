@@ -5,9 +5,9 @@ import os
 import toml
 import base64
 from pathlib import Path
-from apple_account_login import AppleDeveloperAuth
-from github import GitHubSecrets
-from litterbox import LitterboxUploader
+from src.apple_account_login import AppleDeveloperAuth
+from src.github import GitHubSecrets
+from src.litterbox import LitterboxUploader
 from arguments import create_parser
 import shutil
 import requests
@@ -156,13 +156,6 @@ def main():
             cookie_content = base64.b64encode(f.read()).decode("utf-8")
         with open(session_path, "rb") as f:
             session_content = base64.b64encode(f.read()).decode("utf-8")
-
-        # Save local copies
-        cookie_saved = save_base64_file(cookie_content, "apple_auth_cookies.b64")
-        session_saved = save_base64_file(session_content, "apple_auth_session.b64")
-        console.print(f"[blue]Saved Base64 files locally:[/]")
-        console.print(f"Cookie: {cookie_saved}")
-        console.print(f"Session: {session_saved}")
 
         # Get the auth ID from the AppleDeveloperAuth class
         auth_id = auth._get_session_id(apple_id)

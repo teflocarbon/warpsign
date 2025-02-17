@@ -4,7 +4,7 @@ from typing import Dict, Set, Optional, Union
 import plistlib
 import subprocess
 import shutil
-from bundle_mapper import BundleMapping, IDType
+from src.bundle_mapper import BundleMapping, IDType
 from collections import OrderedDict
 import lief
 from lief import MachO
@@ -85,7 +85,7 @@ class AppPatcher:
         self.home_indicator_dylib = (
             Path(__file__).parent / "patches" / "ForceHideHomeIndicator.dylib"
         )
-        from icon_handler import IconHandler
+        from src.icon_handler import IconHandler
 
         self.icon_handler = IconHandler()
         if opts.inject_plugins_patcher and not self.plugins_dylib.exists():

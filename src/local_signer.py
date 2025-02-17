@@ -13,13 +13,13 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from ipa_inspector import IPAInspector
-from bundle_mapper import BundleMapping, IDType
-from entitlements_processor import EntitlementsProcessor
-from app_patcher import AppPatcher, PatchingOptions
-from developer_portal_api import DeveloperPortalAPI
-from apple_account_login import AppleDeveloperAuth
-from cert_handler import CertHandler
+from src.ipa_inspector import IPAInspector
+from src.bundle_mapper import BundleMapping, IDType
+from src.entitlements_processor import EntitlementsProcessor
+from src.app_patcher import AppPatcher, PatchingOptions
+from src.developer_portal_api import DeveloperPortalAPI
+from src.apple_account_login import AppleDeveloperAuth
+from src.cert_handler import CertHandler
 import plistlib
 from logger import get_console
 

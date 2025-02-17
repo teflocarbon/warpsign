@@ -2,12 +2,12 @@
 
 from pathlib import Path
 import sys
-from app_patcher import PatchingOptions
-from local_signer import LocalSigner
-from apple_account_login import AppleDeveloperAuth
+from src.app_patcher import PatchingOptions
+from src.local_signer import LocalSigner
+from src.apple_account_login import AppleDeveloperAuth
 import os
 from arguments import create_parser, create_patching_options
-from app_patcher import StatusBarStyle, UIStyle
+from src.app_patcher import StatusBarStyle, UIStyle
 import getpass
 from logger import get_console
 

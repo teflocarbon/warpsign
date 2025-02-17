@@ -3,8 +3,8 @@
 from pathlib import Path
 import sys
 import os
-from apple_account_login import AppleDeveloperAuth
-from local_signer import LocalSigner
+from src.apple_account_login import AppleDeveloperAuth
+from src.local_signer import LocalSigner
 from arguments import create_parser, create_patching_options
 from logger import get_console
 
