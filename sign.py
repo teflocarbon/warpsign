@@ -12,6 +12,49 @@ import getpass
 from logger import get_console
 
 
+def authenticate_with_apple(console) -> AppleDeveloperAuth | None:
+    auth = AppleDeveloperAuth()
+    apple_id = os.getenv("APPLE_ID")
+    apple_password = os.getenv("APPLE_PASSWORD")
+    session_dir = os.getenv("WARPSIGN_SESSION_DIR")
+
+    if not apple_id:
+        console.print("[red]Error: APPLE_ID environment variable is not set[/]")
+        return None
+
+    # Try loading existing session if session directory is specified
+    if session_dir:
+        console.print(f"Attempting to load session from: {session_dir}")
+        auth.email = apple_id
+        try:
+            auth.load_session()
+            if auth.validate_token():
+                console.print("[green]Successfully loaded existing session!")
+                return auth
+            console.print("[yellow]Loaded session is invalid")
+        except Exception as e:
+            console.print(f"[yellow]Failed to load session: {e}")
+
+        if not apple_password and session_dir:
+            console.print("[red]No valid session and APPLE_PASSWORD not set[/]")
+            return None
+
+    # Try password authentication if no valid session
+    if not apple_password and sys.stdin.isatty():
+        apple_password = getpass.getpass("Enter Apple ID password: ")
+    elif not apple_password:
+        console.print("[red]No valid session and APPLE_PASSWORD not set[/]")
+        return None
+
+    console.print(f"Authenticating with Apple ID: {apple_id}")
+    if auth.authenticate(apple_id, apple_password):
+        console.print("[green]Authentication verified successfully[/]")
+        return auth
+
+    console.print("[red]Authentication failed![/]")
+    return None
+
+
 def main():
     console = get_console()
     parser = create_parser()
@@ -32,56 +75,9 @@ def main():
         console.print(f"[red]Error:[/] IPA file not found: {args.ipa_path}")
         return 1
 
-    # Initialize authentication client
-    auth = AppleDeveloperAuth()
-    apple_id = os.getenv("APPLE_ID")
-    apple_password = os.getenv("APPLE_PASSWORD")
-    session_dir = os.getenv("WARPSIGN_SESSION_DIR")
-
-    if not apple_id:
-        console.print("[red]Error: APPLE_ID environment variable is not set[/]")
+    auth = authenticate_with_apple(console)
+    if not auth:
         return 1
-
-    # Try loading existing session first if session directory is specified
-    if session_dir:
-        console.print(f"Attempting to load session from: {session_dir}")
-        auth.email = apple_id
-        try:
-            auth.load_session()
-            if auth.validate_token():
-                console.print("[green]Successfully loaded existing session!")
-            else:
-                console.print("[yellow]Loaded session is invalid")
-                if not apple_password:
-                    console.print("[red]No valid session and APPLE_PASSWORD not set[/]")
-                    return 1
-        except Exception as e:
-            console.print(f"[yellow]Failed to load session: {e}")
-            if not apple_password:
-                console.print("[red]No valid session and APPLE_PASSWORD not set[/]")
-                return 1
-
-    # If no valid session, try password authentication
-    if not auth.validate_token():
-        if not apple_password:
-            if not session_dir:
-                # Interactive mode - prompt for password
-                apple_password = getpass.getpass("Enter Apple ID password: ")
-            else:
-                console.print("[red]No valid session and APPLE_PASSWORD not set[/]")
-                return 1
-
-        console.print(f"Authenticating with Apple ID: {apple_id}")
-        if not auth.authenticate(apple_id, apple_password):
-            console.print("[red]Authentication failed![/]")
-            return 1
-
-    # Verify API access
-    if not auth.get_bundle_ids():
-        console.print("[red]Authentication succeeded but API access failed[/]")
-        return 1
-
-    console.print("[green]Authentication verified successfully[/]")
 
     # Create patching options from arguments
     options = create_patching_options(args)
