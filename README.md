@@ -80,9 +80,10 @@ pip install -r requirements.txt
 
 
 > [!NOTE]
-> If you don't have a certificate, follow this [guide from Apple](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates/)
->
-> If you don't have a macOS device. You can follow this [guide](https://mzansibytes.com/2021/08/28/create-apple-developer-certificates-on-windows/)
+> #### If you don't have a certificate.
+> - If you're using macOS, follow this [guide from Apple](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates/)
+> - If you're using Windows. You can follow this [guide](https://mzansibytes.com/2021/08/28/create-apple-developer-certificates-on-windows/)
+> - If you're using Linux. You can follow this [guide](https://gist.github.com/boodle/77436b2d9facb8e938ad)
 
 > [!WARNING]
 > You must have a password with your certificate.
