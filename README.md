@@ -50,6 +50,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 - macOS 11.0 or later (required for code signing)
 - Command Line Tools for Xcode (run `xcode-select --install`)
+- ldid (run `brew install ldid-procursus`)
 - At least 1GB free disk space for temporary files
 - Active internet connection for Developer Portal API access
 
