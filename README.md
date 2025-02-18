@@ -36,12 +36,13 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 ## ⚠️ Requirements
 
-- Paid Apple Developer Account
+- **Paid Apple Developer Account**. Free accounts will never be supported.
 - Apple Developer or Distribution Certificate (generated via Developer Portal)
 - Python 3.8 or higher
 - macOS (Apple signing requirements)
 
-> ⚠️ **Note**: Wildcard provisioning profiles and identifiers are not supported
+> [!WARNING]
+> Wildcard provisioning profiles and identifiers are not supported
 
 ## 💻 System Requirements
 
@@ -52,12 +53,18 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 - At least 1GB free disk space for temporary files
 - Active internet connection for Developer Portal API access
 
+> [!IMPORTANT]
+> Whilst every attempt has been made throughout the script to limit the impact to your system, there is still modification of system resources such as the keychain. If you do not wish to have any such impact on your system, it's recommended to use the CI version.
+
 ### CI Signing
 
 - Any operating system (Windows, macOS, or Linux)
 - Python 3.8 or higher
 - Active internet connection
 - GitHub account with repository access
+
+> [!IMPORTANT]
+> CI signing is limited to files with a maximum of 1GB. At this time, they're also unable to use the `--icon` option.
 
 ## 📦 Dependencies
 
@@ -70,6 +77,17 @@ pip install -r requirements.txt
 ```
 
 ## 📝 Certificate Setup
+
+
+> [!NOTE]
+> If you don't have a certificate, follow this [guide from Apple](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates/)
+>
+> If you don't have a macOS device. You can follow this [guide](https://mzansibytes.com/2021/08/28/create-apple-developer-certificates-on-windows/)
+
+> [!WARNING]
+> You must have a password with your certificate.
+
+This part assume that you have a working Apple Development and Apple Distribution certificate.
 
 1. Create the following directory structure in your project root:
 
@@ -123,13 +141,18 @@ python3 sign.py my-app.ipa
 
 ### CI Usage
 
-1. Copy `config.toml.sample` to `config.toml`:
+1. Fork or use the template [warpsign-ci](https://github.com/teflocarbon/warpsign-ci). Make sure workflows are enabled under the Actions tab.
+
+> [!WARNING]
+> It's recommended to use a template rather than a fork, since a fork must be public and cannot be made private. The logs will output things like your Team ID and your name as an Apple Developer.
+
+2. Copy `config.toml.sample` to `config.toml`:
 
 ```bash
 cp config.toml.sample config.toml
 ```
 
-2. Edit `config.toml` with your GitHub token and settings:
+3. Edit `config.toml` with your GitHub token and settings:
 
 ```toml
 github_token = "your-github-token"
@@ -137,13 +160,22 @@ repository = "your-username/your-repo"
 workflow = "sign.yml"
 ```
 
-3. Run the CI signing script:
+> [!IMPORTANT]
+> It's recommended to use a `Fine-grained personal access token` from GitHub. You only need to enable Read/write access on Secret and Actions. If you don't know how to create a token, please read the [GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+
+4. Run the CI signing script:
 
 ```bash
 python3 sign-ci.py my-app.ipa
 ```
 
 ## Examples
+
+Show all available options
+
+```bash
+python3 sign.py -h
+```
 
 Enable debug mode (requires development certificate):
 
