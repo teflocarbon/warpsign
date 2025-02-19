@@ -37,6 +37,7 @@ class BundleMapping:
         self.encode_ids = randomize
         self.mappings: Dict[str, IDMapping] = {}
         self.id_type_cache: Dict[str, IDType] = {}  # Cache for ID types
+        self.force_original_id = False  # Track if we're using original IDs
 
         # Initialize main_bundle_id without using map_id
         if self.encode_ids:
@@ -184,6 +185,7 @@ class BundleMapping:
         Map entitlements with type-specific handling
         force_original_id: If True, preserve original bundle IDs in entitlements
         """
+        self.force_original_id = force_original_id
         result = entitlements.copy()
 
         # Team identifier
@@ -258,12 +260,15 @@ class BundleMapping:
         if hasattr(self, "registered_identifiers"):
             for k, v in self.mappings.items():
                 if k in self.registered_identifiers and len(k) == len(v.new_id):
+                    # Skip main bundle ID mapping if we're using original IDs
+                    if self.force_original_id and k == self.original_main_bundle_id:
+                        continue
                     if v.new_id not in seen_values:
                         patches[k] = v.new_id
                         seen_values.add(v.new_id)
 
         # Don't include main bundle ID if force_original_id is True
-        if hasattr(self, "original_main_bundle_id"):
+        if self.force_original_id:
             patches.pop(self.original_main_bundle_id, None)
 
         return patches
