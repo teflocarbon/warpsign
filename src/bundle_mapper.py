@@ -191,6 +191,12 @@ class BundleMapping:
         # Team identifier
         result["com.apple.developer.team-identifier"] = self.team_id
 
+        # Map aps-environment based on profile type
+        if "aps-environment" in result:
+            result["aps-environment"] = (
+                "development" if self.profile_type == "development" else "production"
+            )
+
         # Keychain groups
         if "keychain-access-groups" in result:
             groups = result["keychain-access-groups"]

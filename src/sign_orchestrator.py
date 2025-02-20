@@ -115,13 +115,15 @@ class SignOrchestrator:
                 "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
             )
 
-        # Set up bundle mapping with all team IDs
+        # Set up bundle mapping with all team IDs and profile type
         bundle_mapper = BundleMapping(
             original_team_ids=original_team_ids,
             new_team_id=self.team_id,
             original_base_id=main_bundle_id,
             randomize=True,  # We can't sign with the original ID, so we randomize.
         )
+        # Set profile type for aps-environment mapping
+        bundle_mapper.profile_type = self.profile_type
 
         # Get capabilities data from API
         raw_caps = self.api.fetch_available_user_entitlements(
