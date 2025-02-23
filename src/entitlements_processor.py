@@ -108,18 +108,24 @@ class EntitlementsProcessor:
             "keychain-access-groups",
         }
 
-        # Always remove in-app payments
-        if "com.apple.developer.in-app-payments" in entitlements:
-            entitlements_to_remove.add("com.apple.developer.in-app-payments")
+        # List of entitlements that should always be removed
+        banned_entitlements = {
+            "com.apple.developer.in-app-payments",
+        }
+
+        # Always remove banned entitlements
+        for banned in banned_entitlements:
+            if banned in entitlements:
+                entitlements_to_remove.add(banned)
 
         # Examine each entitlement
         for key, value in entitlements.items():
             if key in core_identifiers:
-                continue  # Just skip without logging
+                continue
 
             if capability := self.capabilities.get(key):
                 capabilities_to_enable.add(capability.id)
-            else:
+            elif key not in banned_entitlements:  # Don't log banned entitlements
                 entitlements_to_remove.add(key)
 
         return capabilities_to_enable, entitlements_to_remove
