@@ -27,6 +27,13 @@ Examples:
     # Required argument
     parser.add_argument("ipa_path", type=Path, help="Path to the IPA file to sign")
 
+    # Optional arguments for signing mode
+    parser.add_argument(
+        "--use-provisioning-profile",
+        action="store_true",
+        help="Use local provisioning profiles instead of Apple Developer Portal API [default: disabled]",
+    )
+
     # Optional arguments for patching options
     parser.add_argument(
         "--bundle-name",

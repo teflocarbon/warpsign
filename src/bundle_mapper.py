@@ -236,10 +236,17 @@ class BundleMapping:
         # Handle ubiquity-kvstore-identifier
         if "com.apple.developer.ubiquity-kvstore-identifier" in result:
             kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
-            if "." in kvstore_id:  # If it contains a team ID
+            # Check if it's in format "TEAMID.x" where x is any single character
+            parts = kvstore_id.split(".")
+            if len(parts) == 2 and len(parts[1]) == 1:
+                # It's a short format with single character - just replace team ID
+                suffix = parts[1]
+                result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                    f"{self.team_id}.{suffix}"
+                )
+            elif "." in kvstore_id:  # If it's a full bundle ID format
                 bundle_id = kvstore_id.split(".", 1)[1]
                 if force_original_id:
-                    # Keep original bundle ID but update team ID
                     result["com.apple.developer.ubiquity-kvstore-identifier"] = (
                         f"{self.team_id}.{bundle_id}"
                     )

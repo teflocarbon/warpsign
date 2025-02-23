@@ -20,6 +20,7 @@ from src.app_patcher import AppPatcher, PatchingOptions
 from src.developer_portal_api import DeveloperPortalAPI
 from src.apple_account_login import AppleDeveloperAuth
 from src.cert_handler import CertHandler
+from src.verification import SigningVerifier
 import plistlib
 from logger import get_console
 
@@ -326,7 +327,6 @@ class SignOrchestrator:
             info_plist_path = inspector.app_dir / component.path / "Info.plist"
             self.console.print(f"[blue]Updating Info.plist:[/] {info_plist_path}")
 
-            # Use the shared patcher instance
             self.patcher.patch_info_plist(
                 info_plist_path,
                 bundle_mapper=bundle_mapper,
@@ -631,3 +631,13 @@ class SignOrchestrator:
 
                 # Package signed IPA, sealing it with a kiss.
                 self._package_ipa(inspector, temp_path, output_path)
+
+                # Verify the signed IPA
+
+                verifier = SigningVerifier(output_path)
+                if verifier.verify_entitlements():
+                    self.console.print("[green]✓ Entitlements verification passed")
+                else:
+                    self.console.print(
+                        "[yellow]⚠️  Entitlements verification found issues"
+                    )
