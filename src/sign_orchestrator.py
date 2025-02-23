@@ -478,31 +478,31 @@ class SignOrchestrator:
                 f"\n[blue]Signing {'main app' if is_main_app else 'component'}:[/] {component.path}"
             )
 
-            if component.entitlements:
-                mapped_ents = bundle_mapper.map_entitlements(
-                    component.entitlements,
-                    force_original_id=True,
-                )
-                self._show_entitlements_mapping(
-                    component.entitlements, mapped_ents, removals
-                )
+            # Get the mapped bundle ID that matches the Info.plist
+            mapped_bundle_id = bundle_mapper.map_bundle_id(component.bundle_id)
 
             binary_path = inspector.app_dir / component.executable
 
-            # Map and filter entitlements
+            # Map and filter entitlements using the consistent bundle ID
             filtered_ents = None
             if component.entitlements:
-                mapped_ents = bundle_mapper.map_entitlements(component.entitlements)
+                # Always use mapped_bundle_id for both profile and binary
+                mapped_ents = bundle_mapper.map_entitlements(
+                    component.entitlements,
+                    force_original_id=False,
+                    override_bundle_id=mapped_bundle_id,  # Force use of mapped Info.plist bundle ID
+                )
                 filtered_ents = {
                     k: v for k, v in mapped_ents.items() if k not in removals
                 }
 
-            # Determine if this is the main binary
-            is_main_binary = component.path == Path(".")
+                self._show_entitlements_mapping(
+                    component.entitlements, mapped_ents, removals
+                )
 
-            # Patch and sign binary
+            # Patch and sign binary with consistent bundle ID
             self.patcher.patch_app_binary(
-                binary_path, bundle_mapper, filtered_ents, is_main_binary=is_main_binary
+                binary_path, bundle_mapper, filtered_ents, is_main_binary=is_main_app
             )
 
             if filtered_ents:

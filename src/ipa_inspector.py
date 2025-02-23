@@ -14,14 +14,23 @@ class AppComponent:
     """Represents a signable component in the app bundle"""
 
     path: Path  # Path relative to app root
-    bundle_id: str  # Bundle identifier
+    bundle_id: str  # Bundle identifier from Info.plist
     executable: Path  # Path to main executable
     entitlements: Dict[Any, Any]  # Current entitlements
     info_plist: Dict[Any, Any]  # Info.plist contents
     is_primary: bool  # True for .app/.appex, False for frameworks/dylibs
+    entitlements_bundle_id: Optional[str] = (
+        None  # Bundle ID from entitlements if different
+    )
 
     def __post_init__(self):
-        """Determine if this is a primary component needing full signing"""
+        """Extract bundle IDs and determine if this is a primary component"""
+        # Extract bundle ID from entitlements if present
+        if self.entitlements and "application-identifier" in self.entitlements:
+            ent_id = self.entitlements["application-identifier"]
+            if "." in ent_id:  # Should be in format TEAM_ID.BUNDLE_ID
+                self.entitlements_bundle_id = ent_id.split(".", 1)[1]
+
         # Primary: main app binary or app extensions
         self.is_primary = (
             self.path == Path(".")  # Main app binary

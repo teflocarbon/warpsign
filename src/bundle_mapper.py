@@ -179,14 +179,29 @@ class BundleMapping:
         return self.map_id(original_id, id_type)
 
     def map_entitlements(
-        self, entitlements: Dict, force_original_id: bool = False
+        self,
+        entitlements: Dict,
+        force_original_id: bool = False,
+        override_bundle_id: Optional[str] = None,
     ) -> Dict:
         """
-        Map entitlements with type-specific handling
-        force_original_id: If True, preserve original bundle IDs in entitlements
+        Map entitlements with type-specific handling.
+        override_bundle_id: If provided, this bundle ID will be used for application-identifier
         """
-        self.force_original_id = force_original_id
         result = entitlements.copy()
+
+        # Application identifier - always use the override if provided
+        if "application-identifier" in result:
+            if override_bundle_id:
+                # Always use the provided bundle ID (from Info.plist)
+                result["application-identifier"] = (
+                    f"{self.team_id}.{override_bundle_id}"
+                )
+            else:
+                # Fallback to normal mapping
+                bundle_id = result["application-identifier"].split(".", 1)[1]
+                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
+                result["application-identifier"] = f"{self.team_id}.{new_bundle_id}"
 
         # Team identifier
         result["com.apple.developer.team-identifier"] = self.team_id
@@ -204,16 +219,6 @@ class BundleMapping:
                 result["keychain-access-groups"] = [
                     self.map_id(g, self.detect_id_type(g, entitlements)) for g in groups
                 ]
-
-        # Application identifier - respect force_original_id
-        if "application-identifier" in result:
-            bundle_id = result["application-identifier"].split(".", 1)[1]
-            if force_original_id:
-                # Keep original bundle ID but update team ID
-                result["application-identifier"] = f"{self.team_id}.{bundle_id}"
-            else:
-                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
-                result["application-identifier"] = f"{self.team_id}.{new_bundle_id}"
 
         # App groups - always remap
         for key in ["com.apple.security.application-groups", "application-groups"]:
