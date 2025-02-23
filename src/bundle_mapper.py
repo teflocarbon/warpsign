@@ -179,14 +179,28 @@ class BundleMapping:
         return self.map_id(original_id, id_type)
 
     def map_entitlements(
-        self, entitlements: Dict, force_original_id: bool = False
+        self,
+        entitlements: Dict,
+        override_bundle_id: Optional[str] = None,
     ) -> Dict:
         """
-        Map entitlements with type-specific handling
-        force_original_id: If True, preserve original bundle IDs in entitlements
+        Map entitlements with type-specific handling.
+        override_bundle_id: If provided, this bundle ID will be used for application-identifier
         """
-        self.force_original_id = force_original_id
         result = entitlements.copy()
+
+        # Application identifier - always use the override if provided
+        if "application-identifier" in result:
+            if override_bundle_id:
+                # Always use the provided bundle ID (from Info.plist)
+                result["application-identifier"] = (
+                    f"{self.team_id}.{override_bundle_id}"
+                )
+            else:
+                # Fallback to normal mapping
+                bundle_id = result["application-identifier"].split(".", 1)[1]
+                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
+                result["application-identifier"] = f"{self.team_id}.{new_bundle_id}"
 
         # Team identifier
         result["com.apple.developer.team-identifier"] = self.team_id
@@ -204,16 +218,6 @@ class BundleMapping:
                 result["keychain-access-groups"] = [
                     self.map_id(g, self.detect_id_type(g, entitlements)) for g in groups
                 ]
-
-        # Application identifier - respect force_original_id
-        if "application-identifier" in result:
-            bundle_id = result["application-identifier"].split(".", 1)[1]
-            if force_original_id:
-                # Keep original bundle ID but update team ID
-                result["application-identifier"] = f"{self.team_id}.{bundle_id}"
-            else:
-                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
-                result["application-identifier"] = f"{self.team_id}.{new_bundle_id}"
 
         # App groups - always remap
         for key in ["com.apple.security.application-groups", "application-groups"]:
@@ -233,21 +237,23 @@ class BundleMapping:
                 )
                 result[key] = [self.map_id(c, IDType.ICLOUD) for c in containers]
 
-        # Handle ubiquity-kvstore-identifier
+        # Handle ubiquity-kvstore-identifier, optionally using original IDs.
         if "com.apple.developer.ubiquity-kvstore-identifier" in result:
             kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
-            if "." in kvstore_id:  # If it contains a team ID
+            # Check if it's in format "TEAMID.x" where x is any single character
+            parts = kvstore_id.split(".")
+            if len(parts) == 2 and len(parts[1]) == 1:
+                # It's a short format with single character - just replace team ID
+                suffix = parts[1]
+                result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                    f"{self.team_id}.{suffix}"
+                )
+            elif "." in kvstore_id:  # If it's a full bundle ID format
                 bundle_id = kvstore_id.split(".", 1)[1]
-                if force_original_id:
-                    # Keep original bundle ID but update team ID
-                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
-                        f"{self.team_id}.{bundle_id}"
-                    )
-                else:
-                    new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
-                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
-                        f"{self.team_id}.{new_bundle_id}"
-                    )
+                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
+                result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                    f"{self.team_id}.{new_bundle_id}"
+                )
 
         return result
 
