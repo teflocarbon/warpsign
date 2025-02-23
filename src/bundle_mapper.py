@@ -181,7 +181,6 @@ class BundleMapping:
     def map_entitlements(
         self,
         entitlements: Dict,
-        force_original_id: bool = False,
         override_bundle_id: Optional[str] = None,
     ) -> Dict:
         """
@@ -238,7 +237,7 @@ class BundleMapping:
                 )
                 result[key] = [self.map_id(c, IDType.ICLOUD) for c in containers]
 
-        # Handle ubiquity-kvstore-identifier
+        # Handle ubiquity-kvstore-identifier, optionally using original IDs.
         if "com.apple.developer.ubiquity-kvstore-identifier" in result:
             kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
             # Check if it's in format "TEAMID.x" where x is any single character
@@ -251,15 +250,10 @@ class BundleMapping:
                 )
             elif "." in kvstore_id:  # If it's a full bundle ID format
                 bundle_id = kvstore_id.split(".", 1)[1]
-                if force_original_id:
-                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
-                        f"{self.team_id}.{bundle_id}"
-                    )
-                else:
-                    new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
-                    result["com.apple.developer.ubiquity-kvstore-identifier"] = (
-                        f"{self.team_id}.{new_bundle_id}"
-                    )
+                new_bundle_id = self.map_id(bundle_id, IDType.BUNDLE)
+                result["com.apple.developer.ubiquity-kvstore-identifier"] = (
+                    f"{self.team_id}.{new_bundle_id}"
+                )
 
         return result
 

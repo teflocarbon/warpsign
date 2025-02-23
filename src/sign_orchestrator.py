@@ -299,7 +299,6 @@ class SignOrchestrator:
                 if component.entitlements:
                     mapped_ents = bundle_mapper.map_entitlements(
                         component.entitlements,
-                        force_original_id=False,  # This must be false, otherwise we'll try to sign with the original ID.
                     )
                 if not self.api.set_entitlements_for_bundle_id(
                     self.team_id, bundle.id, new_id, caps, group_ids=group_ids
@@ -486,11 +485,10 @@ class SignOrchestrator:
             # Map and filter entitlements using the consistent bundle ID
             filtered_ents = None
             if component.entitlements:
-                # Always use mapped_bundle_id for both profile and binary
+                # Use force_original_id from patching options
                 mapped_ents = bundle_mapper.map_entitlements(
                     component.entitlements,
-                    force_original_id=False,
-                    override_bundle_id=mapped_bundle_id,  # Force use of mapped Info.plist bundle ID
+                    override_bundle_id=mapped_bundle_id,  # Force use of mapped Info.plist bundle ID since sometimes entitlements are different.
                 )
                 filtered_ents = {
                     k: v for k, v in mapped_ents.items() if k not in removals
