@@ -31,6 +31,7 @@ class SignOrchestrator:
         self.console = get_console()
         self.patcher = None
         self.patching_options = None
+        self.bundle_mapper = None  # Will be initialized during signing process
 
         # Convert cert_dir to Path if it's a string
         if cert_dir:
@@ -104,27 +105,30 @@ class SignOrchestrator:
         self.api = DeveloperPortalAPI(self.auth)
 
     def _analyze_components(self, inspector: IPAInspector, temp_path: Path):
-        """Analyze components and create bundle mapping plans"""
+        """Analyze components and create a single source of truth for bundle mapping"""
         components = inspector.get_components()
         main_bundle_id = inspector.get_main_app_bundle_id()
-        original_team_ids = (
-            inspector.get_team_ids()
-        )  # Get all team IDs, there can be multiple.. for some reason..
+        original_team_ids = inspector.get_team_ids()
 
         if not original_team_ids:
             self.console.print(
                 "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
             )
 
-        # Set up bundle mapping with all team IDs and profile type
-        bundle_mapper = BundleMapping(
+        # Set up bundle mapping with all team IDs and profile type - SINGLE SOURCE OF TRUTH
+        self.bundle_mapper = BundleMapping(
             original_team_ids=original_team_ids,
             new_team_id=self.team_id,
             original_base_id=main_bundle_id,
-            randomize=True,  # We can't sign with the original ID, so we randomize.
+            randomize=self.patching_options.encode_ids,  # Use patching options to determine if we should randomize
         )
+        # Apply patching options to bundle mapper
+        self.bundle_mapper.force_original_id = self.patching_options.force_original_id
         # Set profile type for aps-environment mapping
-        bundle_mapper.profile_type = self.profile_type
+        self.bundle_mapper.profile_type = self.profile_type
+
+        # Initialize registered identifiers set in bundle_mapper
+        self.bundle_mapper.registered_identifiers = set()
 
         # Get capabilities data from API
         raw_caps = self.api.fetch_available_user_entitlements(
@@ -137,24 +141,24 @@ class SignOrchestrator:
         icloud_containers = set()
         bundle_plans = []  # (component, new_bundle_id, capabilities, removals)
 
-        # Analyze each component
+        # Analyze each component and create a single mapping plan
         for component in components:
             if not component.is_primary:
                 continue
 
             # Map bundle ID and analyze entitlements
-            new_bundle_id = bundle_mapper.map_bundle_id(component.bundle_id)
+            new_bundle_id = self.bundle_mapper.map_bundle_id(component.bundle_id)
             capabilities, removals = processor.process_entitlements(
                 component.entitlements
             )
 
-            # Collect groups and containers from entitlements
+            # Map and collect groups and containers from entitlements
             for key, value in component.entitlements.items():
                 if key == "com.apple.security.application-groups":
                     if isinstance(value, list):
                         for group in value:
                             # Use map_bundle_id for consistency
-                            mapped_group = bundle_mapper.map_bundle_id(group)
+                            mapped_group = self.bundle_mapper.map_bundle_id(group)
                             app_groups.add(mapped_group)
                 elif key in [
                     "com.apple.developer.icloud-container-identifiers",
@@ -163,13 +167,15 @@ class SignOrchestrator:
                     if isinstance(value, list):
                         for container in value:
                             # Use map_bundle_id for consistency
-                            mapped_container = bundle_mapper.map_bundle_id(container)
+                            mapped_container = self.bundle_mapper.map_bundle_id(
+                                container
+                            )
                             icloud_containers.add(mapped_container)
 
             # Store component plan
             bundle_plans.append((component, new_bundle_id, capabilities, removals))
 
-        return components, bundle_mapper, bundle_plans, app_groups, icloud_containers
+        return components, bundle_plans, app_groups, icloud_containers
 
     def _register_app_resources(
         self,
@@ -178,12 +184,8 @@ class SignOrchestrator:
         bundle_plans,
         app_groups,
         icloud_containers,
-        bundle_mapper,
     ):
-        """Register app IDs and resources"""
-        # Initialize registered identifiers set in bundle_mapper
-        bundle_mapper.registered_identifiers = set()
-
+        """Register app IDs and resources using the single bundle mapper"""
         # Show registration summary first
         self.console.print("\n[blue][bold]Registration Summary[/]")
         if app_groups:
@@ -211,14 +213,14 @@ class SignOrchestrator:
                     original_id = next(
                         (
                             k
-                            for k, v in bundle_mapper.mappings.items()
+                            for k, v in self.bundle_mapper.mappings.items()
                             if v.new_id == group_id
                         ),
                         None,
                     )
                     if original_id:
-                        bundle_mapper.registered_identifiers.add(original_id)
-                    bundle_mapper.registered_identifiers.add(group_id)
+                        self.bundle_mapper.registered_identifiers.add(original_id)
+                    self.bundle_mapper.registered_identifiers.add(group_id)
 
         if icloud_containers:
             for container_id in icloud_containers:
@@ -233,14 +235,14 @@ class SignOrchestrator:
                     original_id = next(
                         (
                             k
-                            for k, v in bundle_mapper.mappings.items()
+                            for k, v in self.bundle_mapper.mappings.items()
                             if v.new_id == container_id
                         ),
                         None,
                     )
                     if original_id:
-                        bundle_mapper.registered_identifiers.add(original_id)
-                    bundle_mapper.registered_identifiers.add(container_id)
+                        self.bundle_mapper.registered_identifiers.add(original_id)
+                    self.bundle_mapper.registered_identifiers.add(container_id)
 
         # Register each app ID and set its capabilities
         for component, new_id, caps, _ in bundle_plans:
@@ -265,20 +267,20 @@ class SignOrchestrator:
                 original_id = next(
                     (
                         k
-                        for k, v in bundle_mapper.mappings.items()
+                        for k, v in self.bundle_mapper.mappings.items()
                         if v.new_id == new_id
                     ),
                     None,
                 )
                 if original_id:
-                    bundle_mapper.registered_identifiers.add(original_id)
-                bundle_mapper.registered_identifiers.add(new_id)
+                    self.bundle_mapper.registered_identifiers.add(original_id)
+                self.bundle_mapper.registered_identifiers.add(new_id)
 
                 # Track team ID mappings
-                for orig_team_id in bundle_mapper.original_team_ids:
+                for orig_team_id in self.bundle_mapper.original_team_ids:
                     if orig_team_id in component.bundle_id:
-                        bundle_mapper.registered_identifiers.add(orig_team_id)
-                        bundle_mapper.registered_identifiers.add(self.team_id)
+                        self.bundle_mapper.registered_identifiers.add(orig_team_id)
+                        self.bundle_mapper.registered_identifiers.add(self.team_id)
 
             else:
                 self.console.print(
@@ -295,24 +297,71 @@ class SignOrchestrator:
                 if "ICLOUD" in caps and registered_containers:
                     group_ids["ICLOUD"] = [c.id for c in registered_containers]
 
-                # Set entitlements
+                # Set entitlements using the mapped entitlements from our single source of truth
                 if component.entitlements:
-                    mapped_ents = bundle_mapper.map_entitlements(
+                    mapped_ents = self.bundle_mapper.map_entitlements(
                         component.entitlements,
                     )
+
                 if not self.api.set_entitlements_for_bundle_id(
                     self.team_id, bundle.id, new_id, caps, group_ids=group_ids
                 ):
                     self.console.print(f"[red]Failed to set capabilities for {new_id}")
 
-        # Log registered identifiers for debugging
+        # Log registered identifiers for debugging with arrows showing mappings
         self.console.print("\n[blue]Registered identifiers for binary patching:")
-        self.console.print(sorted(bundle_mapper.registered_identifiers))
 
-    def _update_info_plists(
-        self, inspector: IPAInspector, components, bundle_plans, bundle_mapper
-    ):
-        """Update Info.plist files with new bundle IDs and settings"""
+        # Display mapping pairs with arrows (avoiding duplicates)
+        if (
+            hasattr(self.bundle_mapper, "registered_identifiers")
+            and self.bundle_mapper.registered_identifiers
+        ):
+            # Create a dictionary to store unique mappings
+            unique_mappings = {}
+
+            # First collect team ID mappings
+            for orig_team_id in self.bundle_mapper.original_team_ids:
+                if orig_team_id in self.bundle_mapper.registered_identifiers:
+                    unique_mappings[orig_team_id] = self.team_id
+
+            # Then collect all other registered mappings
+            for original_id in self.bundle_mapper.registered_identifiers:
+                # Skip team IDs as we already processed them
+                if (
+                    original_id in self.bundle_mapper.original_team_ids
+                    or original_id == self.team_id
+                ):
+                    continue
+
+                # Find the mapping for this ID
+                mapping = self.bundle_mapper.mappings.get(original_id)
+                if mapping and mapping.new_id != original_id:
+                    unique_mappings[original_id] = mapping.new_id
+                elif original_id in [
+                    m.new_id for m in self.bundle_mapper.mappings.values()
+                ]:
+                    # This is a new ID that was registered
+                    # Find its original ID if not already in our mappings
+                    for orig, map_obj in self.bundle_mapper.mappings.items():
+                        if (
+                            map_obj.new_id == original_id
+                            and orig not in unique_mappings
+                            and orig not in unique_mappings.values()
+                        ):
+                            unique_mappings[orig] = original_id
+                            break
+
+            # Now display the unique mappings in sorted order
+            for original_id in sorted(unique_mappings.keys()):
+                new_id = unique_mappings[original_id]
+                self.console.print(f"[cyan]{original_id}[/] -> [green]{new_id}[/]")
+        else:
+            self.console.print(
+                "[yellow]No registered identifiers found for binary patching[/]"
+            )
+
+    def _update_info_plists(self, inspector: IPAInspector, components, bundle_plans):
+        """Update Info.plist files using the single bundle mapper"""
         for component in components:
             if not component.is_primary:
                 continue
@@ -322,13 +371,13 @@ class SignOrchestrator:
             if not plan:
                 continue
 
-            # Update Info.plist using patcher
+            # Update Info.plist using patcher and our single bundle mapper
             info_plist_path = inspector.app_dir / component.path / "Info.plist"
             self.console.print(f"[blue]Updating Info.plist:[/] {info_plist_path}")
 
             self.patcher.patch_info_plist(
                 info_plist_path,
-                bundle_mapper=bundle_mapper,
+                bundle_mapper=self.bundle_mapper,  # Use our single source of truth
                 is_main_app=(component.path == Path(".")),
             )
 
@@ -405,16 +454,10 @@ class SignOrchestrator:
         self.console.print_json(json.dumps(mapped_ents, indent=4))
 
     def _sign_components(
-        self,
-        inspector: IPAInspector,
-        components,
-        bundle_plans,
-        bundle_mapper,
-        temp_path: Path,
+        self, inspector: IPAInspector, components, bundle_plans, temp_path: Path
     ):
-        """Sign all components with proper entitlements"""
-        # Update patcher's bundle mapper
-        self.patcher.bundle_mapper = bundle_mapper
+        """Sign all components with proper entitlements using the single bundle mapper"""
+        # No need to update patcher's bundle mapper as it's already set during creation
 
         self.console.print("\n[blue]Signing frameworks[/]")
         # Sort components to prioritize injected dylibs
@@ -452,7 +495,7 @@ class SignOrchestrator:
             self.console.print(
                 f"[blue]Patching and signing framework:[/] {binary_path}"
             )
-            self.patcher.patch_app_binary(binary_path, bundle_mapper)
+            self.patcher.patch_app_binary(binary_path, self.bundle_mapper)
             self.cert_handler.sign_binary(binary_path, None, False)
 
         # Sort primary components by path depth (deepest first)
@@ -478,17 +521,17 @@ class SignOrchestrator:
             )
 
             # Get the mapped bundle ID that matches the Info.plist
-            mapped_bundle_id = bundle_mapper.map_bundle_id(component.bundle_id)
+            mapped_bundle_id = self.bundle_mapper.map_bundle_id(component.bundle_id)
 
             binary_path = inspector.app_dir / component.executable
 
             # Map and filter entitlements using the consistent bundle ID
             filtered_ents = None
             if component.entitlements:
-                # Use force_original_id from patching options
-                mapped_ents = bundle_mapper.map_entitlements(
+                # Use the single source of truth for entitlement mapping
+                mapped_ents = self.bundle_mapper.map_entitlements(
                     component.entitlements,
-                    override_bundle_id=mapped_bundle_id,  # Force use of mapped Info.plist bundle ID since sometimes entitlements are different.
+                    override_bundle_id=mapped_bundle_id,  # Force use of mapped Info.plist bundle ID
                 )
                 filtered_ents = {
                     k: v for k, v in mapped_ents.items() if k not in removals
@@ -500,7 +543,10 @@ class SignOrchestrator:
 
             # Patch and sign binary with consistent bundle ID
             self.patcher.patch_app_binary(
-                binary_path, bundle_mapper, filtered_ents, is_main_binary=is_main_app
+                binary_path,
+                self.bundle_mapper,
+                filtered_ents,
+                is_main_binary=is_main_app,
             )
 
             if filtered_ents:
@@ -571,6 +617,65 @@ class SignOrchestrator:
                 shutil.copy2(home_dylib, target_dylib)
                 self.console.print(f"[green]Copied {home_dylib.name} to Frameworks[/]")
 
+    def _display_mapping_report(self, components):
+        """Display a concise report of all ID mappings that will be applied"""
+        self.console.print("\n[bold blue]===== ID Mapping Report =====[/]")
+
+        # Display basic configuration
+        self.console.print(
+            f"[cyan]Team ID:[/] {' '.join(self.bundle_mapper.original_team_ids)} -> [green]{self.team_id}[/]"
+        )
+        if self.patching_options.force_original_id:
+            self.console.print(
+                "[yellow]Using original bundle ID in Info.plist for main app[/]"
+            )
+
+        # Bundle ID mappings - grouped by component type
+        self.console.print("\n[bold cyan]Bundle ID Mappings:[/]")
+        for component in [c for c in components if c.is_primary]:
+            orig_id = component.bundle_id
+            new_id = self.bundle_mapper.map_bundle_id(orig_id)
+
+            # Add note for main app with force_original_id
+            is_main_app = component.path == Path(".")
+            if is_main_app and self.patching_options.force_original_id:
+                display_id = orig_id
+                note = " (preserved in Info.plist)"
+            else:
+                display_id = new_id
+                note = ""
+
+            path_display = (
+                f"[{component.path}]" if component.path != Path(".") else "[Main App]"
+            )
+            self.console.print(
+                f"{path_display} [cyan]{orig_id}[/] -> [green]{display_id}[/]{note}"
+            )
+
+        # Group other mappings by type for cleaner display
+        all_mappings = {}
+        for orig_id, mapping in self.bundle_mapper.mappings.items():
+            # Skip team IDs and primary bundle IDs (already shown)
+            if orig_id in self.bundle_mapper.original_team_ids:
+                continue
+            if orig_id in [c.bundle_id for c in components if c.is_primary]:
+                continue
+
+            # Group by type
+            id_type = mapping.id_type.name
+            if id_type not in all_mappings:
+                all_mappings[id_type] = []
+            all_mappings[id_type].append((orig_id, mapping.new_id))
+
+        # Display other mappings by type
+        for id_type, mappings in sorted(all_mappings.items()):
+            if mappings:
+                self.console.print(f"\n[bold cyan]{id_type} Mappings:[/]")
+                for orig_id, new_id in sorted(mappings):
+                    self.console.print(f"[cyan]{orig_id}[/] -> [green]{new_id}[/]")
+
+        self.console.print("\n[bold blue]=============================\n[/]")
+
     def sign_ipa(
         self, ipa_path: Path, output_path: Path, patching_options: PatchingOptions
     ):
@@ -585,20 +690,23 @@ class SignOrchestrator:
                 # Set up dylibs first if needed
                 self._setup_dylibs(inspector.app_dir)
 
-                # Initialize the patcher once with provided options
-                self.patcher = AppPatcher(
-                    inspector.app_dir,
-                    self.patching_options,
-                )
-
-                # Analyze and create plans
+                # Analyze and create plans - this creates our single source of truth for bundle mapping
                 (
                     components,
-                    bundle_mapper,
                     bundle_plans,
                     app_groups,
                     icloud_containers,
                 ) = self._analyze_components(inspector, temp_path)
+
+                # Show comprehensive mapping report
+                self._display_mapping_report(components)
+
+                # Initialize the patcher with our single bundle mapper
+                self.patcher = AppPatcher(
+                    inspector.app_dir,
+                    self.patching_options,
+                    self.bundle_mapper,  # Pass our single source of truth
+                )
 
                 # Register app IDs and resources
                 self._register_app_resources(
@@ -607,15 +715,12 @@ class SignOrchestrator:
                     bundle_plans,
                     app_groups,
                     icloud_containers,
-                    bundle_mapper,
                 )
 
                 # Update Info.plist files
-                self._update_info_plists(
-                    inspector, components, bundle_plans, bundle_mapper
-                )
+                self._update_info_plists(inspector, components, bundle_plans)
 
-                # Create provisioning profiles.
+                # Create provisioning profiles
                 self._create_provisioning_profiles(inspector, bundle_plans)
 
                 # Sign components
@@ -623,15 +728,13 @@ class SignOrchestrator:
                     inspector,
                     components,
                     bundle_plans,
-                    bundle_mapper,
                     temp_path,
                 )
 
-                # Package signed IPA, sealing it with a kiss.
+                # Package signed IPA
                 self._package_ipa(inspector, temp_path, output_path)
 
                 # Verify the signed IPA
-
                 verifier = SigningVerifier(output_path)
                 if verifier.verify_entitlements():
                     self.console.print("[green]✓ Entitlements verification passed")
