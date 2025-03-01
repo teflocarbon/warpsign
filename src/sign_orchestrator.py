@@ -163,12 +163,14 @@ class SignOrchestrator:
                 elif key in [
                     "com.apple.developer.icloud-container-identifiers",
                     "com.apple.developer.ubiquity-container-identifiers",
+                    "com.apple.developer.icloud-container-development-container-identifiers",
                 ]:
                     if isinstance(value, list):
                         for container in value:
-                            # Use map_bundle_id for consistency
-                            mapped_container = self.bundle_mapper.map_bundle_id(
-                                container
+                            # Set the ID type explicitly to ICLOUD to ensure proper mapping
+                            self.bundle_mapper.id_type_cache[container] = IDType.ICLOUD
+                            mapped_container = self.bundle_mapper.map_id(
+                                container, IDType.ICLOUD
                             )
                             icloud_containers.add(mapped_container)
 
@@ -224,6 +226,15 @@ class SignOrchestrator:
 
         if icloud_containers:
             for container_id in icloud_containers:
+                # At this point, all iCloud containers should already have the iCloud. prefix
+                # from the proper mapping in _analyze_components
+                if not container_id.startswith("iCloud."):
+                    self.console.print(
+                        f"[red]Warning: iCloud container without prefix: {container_id}, this should not happen[/]"
+                    )
+                    # Fix it just in case, but this is an error in our mapping logic
+                    container_id = f"iCloud.{container_id.split('.')[-1]}"
+
                 container = self.api.register_icloud_container(
                     self.team_id,
                     container_id,
@@ -664,13 +675,14 @@ class SignOrchestrator:
             # Group by type
             id_type = mapping.id_type.name
             if id_type not in all_mappings:
-                all_mappings[id_type] = []
-            all_mappings[id_type].append((orig_id, mapping.new_id))
+                all_mappings[id_type] = set()  # Use a set to avoid duplicates
+            all_mappings[id_type].add((orig_id, mapping.new_id))
 
-        # Display other mappings by type
+        # Display mappings by type (sorted by type name)
         for id_type, mappings in sorted(all_mappings.items()):
             if mappings:
                 self.console.print(f"\n[bold cyan]{id_type} Mappings:[/]")
+                # Display unique mappings, sorted by original ID
                 for orig_id, new_id in sorted(mappings):
                     self.console.print(f"[cyan]{orig_id}[/] -> [green]{new_id}[/]")
 

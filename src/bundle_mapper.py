@@ -65,10 +65,27 @@ class BundleMapping:
                 self.id_type_cache[id_str] = IDType.KEYCHAIN
                 return IDType.KEYCHAIN
 
+        # Check if this appears in iCloud container entitlements
+        if entitlements:
+            for icloud_key in [
+                "com.apple.developer.icloud-container-identifiers",
+                "com.apple.developer.ubiquity-container-identifiers",
+                "com.apple.developer.icloud-container-development-container-identifiers",
+            ]:
+                if icloud_key in entitlements:
+                    containers = entitlements[icloud_key]
+                    if isinstance(containers, list) and id_str in containers:
+                        self.id_type_cache[id_str] = IDType.ICLOUD
+                        return IDType.ICLOUD
+
         # Standard prefix checks
-        if id_str.startswith("iCloud.") or "icloud" in id_str.lower():
+        if id_str.startswith("iCloud."):
             id_type = IDType.ICLOUD
-        elif id_str.startswith("group.") or "application-groups" in id_str:
+        elif "icloud" in id_str.lower():
+            id_type = IDType.ICLOUD
+        elif id_str.startswith("group."):
+            id_type = IDType.APP_GROUP
+        elif "application-groups" in id_str:
             id_type = IDType.APP_GROUP
         else:
             id_type = IDType.BUNDLE
@@ -140,9 +157,27 @@ class BundleMapping:
         new_id = original_id
 
         if id_type == IDType.ICLOUD:
-            base_id = original_id.replace("iCloud.", "")
+            # Generate a proper iCloud container ID
+            if original_id.startswith("iCloud."):
+                base_id = original_id.replace("iCloud.", "")
+            else:
+                # Keep the full ID structure, just remove team ID prefix if present
+                for orig_team_id in self.original_team_ids:
+                    if original_id.startswith(orig_team_id):
+                        base_id = original_id[len(orig_team_id) + 1 :]  # +1 for the dot
+                        break
+                else:
+                    base_id = original_id
+
+            # Generate random ID for the base part while preserving structure
             new_base = self.gen_random_id(base_id)
+
+            # Always ensure iCloud container IDs start with iCloud.
             new_id = f"iCloud.{new_base}"
+
+            # Store this in a way that preserves the mapping relationship
+            self._store_mapping(original_id, new_id, id_type)
+            return new_id
 
         elif id_type == IDType.KEYCHAIN:
             # Check against all possible original team IDs
