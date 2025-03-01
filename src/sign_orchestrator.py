@@ -112,7 +112,7 @@ class SignOrchestrator:
 
         if not original_team_ids:
             self.console.print(
-                "[red]No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
+                "[yellow]⚠️  Warning: No team IDs found in the IPA file. This will likely cause issues. Check the IPA file."
             )
 
         # Set up bundle mapping with all team IDs and profile type - SINGLE SOURCE OF TRUTH
@@ -219,7 +219,7 @@ class SignOrchestrator:
                 # from the proper mapping in _analyze_components
                 if not container_id.startswith("iCloud."):
                     self.console.print(
-                        f"[red]Warning: iCloud container without prefix: {container_id}, this should not happen[/]"
+                        f"[red]⚠️ Error: iCloud container without prefix: {container_id}, this should not happen[/]"
                     )
                     # Fix it just in case, but this is an error in our mapping logic
                     container_id = f"iCloud.{container_id.split('.')[-1]}"
@@ -453,6 +453,29 @@ class SignOrchestrator:
         self.console.print("\n[cyan]Final mapped entitlements:[/]")
         self.console.print_json(json.dumps(mapped_ents, indent=4))
 
+    def _ensure_critical_entitlements(self, entitlements: dict, bundle_id: str) -> dict:
+        """Check and add critical entitlements if missing"""
+        critical_entitlements = {
+            "application-identifier": f"{self.team_id}.{bundle_id}",
+            "com.apple.developer.team-identifier": self.team_id,
+        }
+
+        missing = []
+        for key, value in critical_entitlements.items():
+            if key not in entitlements:
+                missing.append(key)
+                entitlements[key] = value
+
+        if missing:
+            self.console.print(
+                f"[yellow]⚠️  Warning: Critical entitlements were missing: {', '.join(missing)}"
+            )
+            self.console.print(
+                "[yellow]Note: This is unexpected. The application will have no entitlements! Essential entitlements have been automatically added to ensure the app is able to be installed."
+            )
+
+        return entitlements
+
     def _sign_components(
         self, inspector: IPAInspector, components, bundle_plans, temp_path: Path
     ):
@@ -537,9 +560,21 @@ class SignOrchestrator:
                     k: v for k, v in mapped_ents.items() if k not in removals
                 }
 
+                # Ensure critical entitlements are present - pass full bundle ID
+                filtered_ents = self._ensure_critical_entitlements(
+                    filtered_ents, mapped_bundle_id
+                )
+
                 self._show_entitlements_mapping(
                     component.entitlements, mapped_ents, removals
                 )
+            else:
+                # If no entitlements at all, create minimal set with critical entitlements
+                self.console.print(
+                    "[yellow]⚠️  Warning: No entitlements found for component, creating minimal set"
+                )
+                # Pass full bundle ID here too
+                filtered_ents = self._ensure_critical_entitlements({}, mapped_bundle_id)
 
             # Patch and sign binary with consistent bundle ID
             self.patcher.patch_app_binary(
