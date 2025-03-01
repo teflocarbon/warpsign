@@ -152,27 +152,16 @@ class SignOrchestrator:
                 component.entitlements
             )
 
-            # Map and collect groups and containers from entitlements
-            for key, value in component.entitlements.items():
-                if key == "com.apple.security.application-groups":
-                    if isinstance(value, list):
-                        for group in value:
-                            # Use map_bundle_id for consistency
-                            mapped_group = self.bundle_mapper.map_bundle_id(group)
-                            app_groups.add(mapped_group)
-                elif key in [
-                    "com.apple.developer.icloud-container-identifiers",
-                    "com.apple.developer.ubiquity-container-identifiers",
-                    "com.apple.developer.icloud-container-development-container-identifiers",
-                ]:
-                    if isinstance(value, list):
-                        for container in value:
-                            # Set the ID type explicitly to ICLOUD to ensure proper mapping
-                            self.bundle_mapper.id_type_cache[container] = IDType.ICLOUD
-                            mapped_container = self.bundle_mapper.map_id(
-                                container, IDType.ICLOUD
-                            )
-                            icloud_containers.add(mapped_container)
+            # Extract resources from entitlements
+            component_groups, component_containers = (
+                self.bundle_mapper.extract_resources_from_entitlements(
+                    component.entitlements
+                )
+            )
+
+            # Add extracted resources to our collections
+            app_groups.update(component_groups)
+            icloud_containers.update(component_containers)
 
             # Store component plan
             bundle_plans.append((component, new_bundle_id, capabilities, removals))

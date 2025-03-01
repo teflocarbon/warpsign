@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Set
 import random
 import string
 from logger import get_console
@@ -23,21 +23,25 @@ class IDMapping:
 class BundleMapping:
     def __init__(
         self,
-        original_team_ids: List[
-            str
-        ],  # Changed from original_team_id to original_team_ids
+        original_team_ids: List[str],
         new_team_id: str,
         original_base_id: str,
         randomize: bool = True,
     ):
         self.console = get_console()
         self.team_id = new_team_id
-        self.original_team_ids = original_team_ids  # Store all original team IDs
+        self.original_team_ids = original_team_ids
         self.original_main_bundle_id = original_base_id
         self.encode_ids = randomize
         self.mappings: Dict[str, IDMapping] = {}
         self.id_type_cache: Dict[str, IDType] = {}  # Cache for ID types
         self.force_original_id = False  # Track if we're using original IDs
+        # Cache for random ID generation to avoid duplicating work
+        self.random_id_cache: Dict[str, str] = {}
+        # Set to store registered identifiers
+        self.registered_identifiers: Set[str] = set()
+        # Default profile type
+        self.profile_type = "development"
 
         # Initialize main_bundle_id without using map_id
         if self.encode_ids:
@@ -52,6 +56,16 @@ class BundleMapping:
         """Store mapping and cache ID type"""
         self.mappings[original_id] = IDMapping(original_id, new_id, id_type)
         self.id_type_cache[original_id] = id_type
+
+    def _get_team_id_match(self, id_str: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Check if id_str starts with any team ID and return the matching team ID and remaining part
+        Returns: (matching_team_id, remaining_part) or (None, None) if no match
+        """
+        for orig_team_id in self.original_team_ids:
+            if id_str.startswith(orig_team_id):
+                return orig_team_id, id_str[len(orig_team_id) :]
+        return None, None
 
     def detect_id_type(self, id_str: str, entitlements: Dict = None) -> IDType:
         """Determine the type of identifier with caching"""
@@ -94,9 +108,14 @@ class BundleMapping:
         return id_type
 
     def gen_random_id(self, original_id: str) -> str:
-        """Generate random ID maintaining exact length of each part"""
+        """Generate random ID maintaining exact length of each part with caching"""
         if not self.encode_ids:
             return original_id
+
+        # Check cache first
+        cache_key = f"{original_id}:{self.team_id}"
+        if cache_key in self.random_id_cache:
+            return self.random_id_cache[cache_key]
 
         parts = original_id.split(".")
         new_parts = []
@@ -108,18 +127,29 @@ class BundleMapping:
             )
             new_parts.append(new_part)
 
-        return ".".join(new_parts)
+        result = ".".join(new_parts)
+        # Cache the result for future use
+        self.random_id_cache[cache_key] = result
+        return result
+
+    def _process_list_entitlement(
+        self, entitlements: Dict, key: str, id_type: IDType
+    ) -> None:
+        """Process a list-type entitlement by mapping each value"""
+        if key in entitlements:
+            values = (
+                entitlements[key]
+                if isinstance(entitlements[key], list)
+                else [entitlements[key]]
+            )
+            entitlements[key] = [self.map_id(v, id_type) for v in values]
 
     def _handle_bundle_id(self, original_id: str) -> str:
         """Handle bundle ID generation with proper team ID and length preservation"""
-        new_id = original_id
-
         # Check if ID starts with any known team ID
-        if any(original_id.startswith(team_id) for team_id in self.original_team_ids):
-            for orig_team_id in self.original_team_ids:
-                if original_id.startswith(orig_team_id):
-                    new_id = f"{self.team_id}{original_id[len(orig_team_id):]}"
-                    break
+        team_id, remaining = self._get_team_id_match(original_id)
+        if team_id:
+            new_id = f"{self.team_id}{remaining}"
         else:
             # Check if this is a component bundle ID
             if original_id.startswith(self.original_main_bundle_id):
@@ -161,11 +191,10 @@ class BundleMapping:
             if original_id.startswith("iCloud."):
                 base_id = original_id.replace("iCloud.", "")
             else:
-                # Keep the full ID structure, just remove team ID prefix if present
-                for orig_team_id in self.original_team_ids:
-                    if original_id.startswith(orig_team_id):
-                        base_id = original_id[len(orig_team_id) + 1 :]  # +1 for the dot
-                        break
+                # Check if starts with team ID
+                team_id, remaining = self._get_team_id_match(original_id)
+                if team_id:
+                    base_id = remaining[1:]  # +1 for the dot
                 else:
                     base_id = original_id
 
@@ -175,28 +204,19 @@ class BundleMapping:
             # Always ensure iCloud container IDs start with iCloud.
             new_id = f"iCloud.{new_base}"
 
-            # Store this in a way that preserves the mapping relationship
-            self._store_mapping(original_id, new_id, id_type)
-            return new_id
-
         elif id_type == IDType.KEYCHAIN:
             # Check against all possible original team IDs
-            matched = False
-            for orig_team_id in self.original_team_ids:
-                if original_id.startswith(orig_team_id):
-                    new_id = f"{self.team_id}{original_id[len(orig_team_id):]}"
-                    matched = True
-                    break
-            if not matched:
+            team_id, remaining = self._get_team_id_match(original_id)
+            if team_id:
+                new_id = f"{self.team_id}{remaining}"
+            else:
                 new_id = f"{self.team_id}.{original_id}"
 
         elif id_type == IDType.APP_GROUP:
             base_id = original_id.replace("group.", "")
-            for orig_team_id in self.original_team_ids:
-                if base_id.startswith(orig_team_id):
-                    remaining = base_id[len(orig_team_id) :]
-                    new_id = f"group.{self.team_id}{remaining}"
-                    break
+            team_id, remaining = self._get_team_id_match(base_id)
+            if team_id:
+                new_id = f"group.{self.team_id}{remaining}"
             else:
                 new_base = self.gen_random_id(base_id)
                 new_id = f"group.{new_base}"
@@ -246,33 +266,24 @@ class BundleMapping:
                 "development" if self.profile_type == "development" else "production"
             )
 
-        # Keychain groups
-        if "keychain-access-groups" in result:
-            groups = result["keychain-access-groups"]
-            if isinstance(groups, list):
-                result["keychain-access-groups"] = [
-                    self.map_id(g, self.detect_id_type(g, entitlements)) for g in groups
-                ]
+        # Process list-type entitlements with consistent logic
+        self._process_list_entitlement(
+            result, "keychain-access-groups", IDType.KEYCHAIN
+        )
+        self._process_list_entitlement(
+            result, "com.apple.security.application-groups", IDType.APP_GROUP
+        )
+        self._process_list_entitlement(result, "application-groups", IDType.APP_GROUP)
 
-        # App groups - always remap
-        for key in ["com.apple.security.application-groups", "application-groups"]:
-            if key in result:
-                groups = result[key] if isinstance(result[key], list) else [result[key]]
-                result[key] = [self.map_id(g, IDType.APP_GROUP) for g in groups]
-
-        # iCloud containers - always remap
+        # Process iCloud container entitlements
         for key in [
             "com.apple.developer.icloud-container-identifiers",
             "com.apple.developer.ubiquity-container-identifiers",
             "com.apple.developer.icloud-container-development-container-identifiers",
         ]:
-            if key in result:
-                containers = (
-                    result[key] if isinstance(result[key], list) else [result[key]]
-                )
-                result[key] = [self.map_id(c, IDType.ICLOUD) for c in containers]
+            self._process_list_entitlement(result, key, IDType.ICLOUD)
 
-        # Handle ubiquity-kvstore-identifier, optionally using original IDs.
+        # Handle ubiquity-kvstore-identifier
         if "com.apple.developer.ubiquity-kvstore-identifier" in result:
             kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
             # Check if it's in format "TEAMID.x" where x is any single character
@@ -303,19 +314,53 @@ class BundleMapping:
             if len(orig_team_id) == len(self.team_id):
                 patches[orig_team_id] = self.team_id
 
-        # Then add other registered identifier mappings
-        if hasattr(self, "registered_identifiers"):
-            for k, v in self.mappings.items():
-                if k in self.registered_identifiers and len(k) == len(v.new_id):
-                    # Skip main bundle ID mapping if we're using original IDs
-                    if self.force_original_id and k == self.original_main_bundle_id:
-                        continue
-                    if v.new_id not in seen_values:
-                        patches[k] = v.new_id
-                        seen_values.add(v.new_id)
+        # Then add registered identifier mappings
+        for k, v in self.mappings.items():
+            if k in self.registered_identifiers and len(k) == len(v.new_id):
+                # Skip main bundle ID mapping if we're using original IDs
+                if self.force_original_id and k == self.original_main_bundle_id:
+                    continue
+                if v.new_id not in seen_values:
+                    patches[k] = v.new_id
+                    seen_values.add(v.new_id)
 
         # Don't include main bundle ID if force_original_id is True
         if self.force_original_id:
             patches.pop(self.original_main_bundle_id, None)
 
         return patches
+
+    def extract_resources_from_entitlements(self, entitlements):
+        """
+        Extract and map app groups and iCloud containers from entitlements
+
+        Returns:
+            Tuple[set, set]: (app_groups, icloud_containers)
+        """
+        app_groups = set()
+        icloud_containers = set()
+
+        # Extract app groups
+        if "com.apple.security.application-groups" in entitlements:
+            groups = entitlements["com.apple.security.application-groups"]
+            if isinstance(groups, list):
+                for group in groups:
+                    mapped_group = self.map_bundle_id(group)
+                    app_groups.add(mapped_group)
+
+        # Extract iCloud containers
+        for key in [
+            "com.apple.developer.icloud-container-identifiers",
+            "com.apple.developer.ubiquity-container-identifiers",
+            "com.apple.developer.icloud-container-development-container-identifiers",
+        ]:
+            if key in entitlements:
+                containers = entitlements[key]
+                if isinstance(containers, list):
+                    for container in containers:
+                        # Set the ID type explicitly to ICLOUD to ensure proper mapping
+                        self.id_type_cache[container] = IDType.ICLOUD
+                        mapped_container = self.map_id(container, IDType.ICLOUD)
+                        icloud_containers.add(mapped_container)
+
+        return app_groups, icloud_containers
