@@ -1,8 +1,7 @@
 import plistlib
 import subprocess
 from pathlib import Path
-import tempfile
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from logger import get_console
 from .ipa_inspector import IPAInspector
 
@@ -32,7 +31,6 @@ class SigningVerifier:
     def _get_profile_entitlements(self, profile_path: Path) -> Dict[str, Any]:
         """Extract entitlements from a provisioning profile."""
         try:
-            # Extract embedded plist from mobileprovision
             result = subprocess.run(
                 ["security", "cms", "-D", "-i", str(profile_path)],
                 capture_output=True,
@@ -46,119 +44,222 @@ class SigningVerifier:
             )
             return {}
 
+    def _is_critical_entitlement(self, key: str) -> bool:
+        """Determine if an entitlement is critical and must match exactly."""
+        critical_keys = [
+            "application-identifier",
+            "com.apple.developer.team-identifier",
+            "aps-environment",
+        ]
+        return key in critical_keys
+
     def _compare_entitlement_values(
         self, key: str, binary_value: Any, profile_value: Any
-    ) -> bool:
-        """Compare entitlement values with special handling for certain keys."""
+    ) -> Tuple[bool, str]:
+        """Compare entitlement values with special handling for certain keys.
+        Returns (is_valid, message)
+        """
+        # Special handling for known cases
+        if key == "com.apple.developer.icloud-services" and profile_value == "*":
+            return True, "Profile allows all iCloud services (wildcard match)"
 
-        # Special handling for known exception cases
         if key == "com.apple.developer.associated-domains" and profile_value == "*":
-            return True
+            return True, "Profile allows all associated domains (wildcard match)"
 
         if key == "keychain-access-groups" and isinstance(profile_value, list):
-            # If profile contains wildcard entry (e.g., "TEAM_ID.*")
             team_wildcard = next((p for p in profile_value if p.endswith(".*")), None)
             if team_wildcard:
                 team_prefix = team_wildcard[:-2]  # Remove .* from the end
-                return all(g.startswith(team_prefix) for g in binary_value)
+                if all(
+                    g.startswith(team_prefix) or g == "com.apple.token"
+                    for g in binary_value
+                ):
+                    return True, "Binary's keychain groups match profile's wildcard"
+                return False, "Binary's keychain groups do not match profile's wildcard"
+            if set(binary_value) == set(profile_value):
+                return True, "Keychain groups match exactly"
+            return False, "Keychain groups do not match exactly"
 
         if key == "com.apple.security.application-groups" and isinstance(
             profile_value, list
         ):
-            # App groups must match exactly (order doesn't matter)
-            return set(binary_value) == set(profile_value)
+            if set(binary_value).issubset(set(profile_value)):
+                return True, "Binary's app groups are a subset of profile's groups"
+            return False, "Binary's app groups are not a subset of profile's groups"
 
-        if key == "com.apple.developer.devicecheck.appattest-environment":
-            # Binary value must be one of the profile values
-            if isinstance(profile_value, list):
-                return binary_value in profile_value
+        if key == "com.apple.developer.icloud-container-environment" and isinstance(
+            profile_value, list
+        ):
+            if binary_value in profile_value:
+                return (
+                    True,
+                    f"Binary's environment '{binary_value}' is allowed by profile",
+                )
+            return (
+                False,
+                f"Binary's environment '{binary_value}' not allowed by profile",
+            )
 
-        # For all other cases, values must match exactly
+        # Default comparison for other cases
         if isinstance(binary_value, list) and isinstance(profile_value, list):
-            return set(binary_value) == set(
-                profile_value
-            )  # Exact match, order doesn't matter
+            if set(binary_value) == set(profile_value):
+                return True, "Values match (order independent)"
+            return False, "List values do not match"
 
-        return binary_value == profile_value  # Exact match for everything else
+        if binary_value == profile_value:
+            return True, "Values match exactly"
+        return (
+            False,
+            f"Values do not match: binary={binary_value}, profile={profile_value}",
+        )
 
     def _compare_entitlements(
         self,
         binary_ents: Dict[str, Any],
         profile_ents: Dict[str, Any],
         component_path: str,
-    ) -> bool:
-        """Compare binary and profile entitlements, return True if they match."""
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Compare binary and profile entitlements, returning validity and results list."""
         all_keys = set(binary_ents.keys()) | set(profile_ents.keys())
-        all_valid = True
+        all_critical_valid = True
+        results = []
+
+        # Track matches for summary
+        matched_count = 0
+        critical_mismatches = []
+        warnings = []
 
         for key in all_keys:
-            # Special handling for get-task-allow
-            if key == "get-task-allow":
-                # Only check if it exists in binary
-                if key in binary_ents:
-                    if key not in profile_ents:
-                        self.console.print(
-                            f"[red]Error: get-task-allow present in binary but missing from profile"
-                        )
-                        all_valid = False
-                    elif binary_ents[key] != profile_ents[key]:
-                        self.console.print("[red]Value mismatch for get-task-allow:")
-                        self.console.print(f"  Binary: {binary_ents[key]}")
-                        self.console.print(f"  Profile: {profile_ents[key]}")
-                        all_valid = False
-                continue
-
             binary_value = binary_ents.get(key)
             profile_value = profile_ents.get(key)
 
-            # Both should have the value
             if key not in profile_ents:
-                self.console.print(
-                    f"[red]Error: {key} present in binary but missing from profile"
-                )
-                all_valid = False
+                result = {
+                    "type": "error",
+                    "key": key,
+                    "message": f"Present in binary but missing from profile",
+                    "binary_value": binary_value,
+                    "profile_value": None,
+                }
+                results.append(result)
+
+                if self._is_critical_entitlement(key):
+                    all_critical_valid = False
+                    critical_mismatches.append(key)
+                else:
+                    warnings.append(key)
                 continue
 
             if key not in binary_ents:
-                self.console.print(
-                    f"[red]Error: {key} present in profile but missing from binary"
-                )
-                all_valid = False
-                continue
-
-            if not self._compare_entitlement_values(key, binary_value, profile_value):
-                self.console.print(f"[red]Value mismatch for {key}:")
-                self.console.print(f"  Binary: {binary_value}")
-                self.console.print(f"  Profile: {profile_value}")
-
-                # Show these as warnings but don't fail verification
-                if key in [
-                    "com.apple.developer.associated-domains",
-                    "com.apple.developer.devicecheck.appattest-environment",
-                    "com.apple.security.application-groups",
-                    "keychain-access-groups",
-                ]:
-                    self.console.print("[yellow]  ⚠️  Known difference (acceptable)")
+                # Special handling for get-task-allow
+                if key == "get-task-allow":
+                    # Only record warning if get-task-allow is true in profile
+                    if profile_value is True:
+                        result = {
+                            "type": "warning",
+                            "key": key,
+                            "message": "True in profile but missing from binary (development profile with distribution-signed binary?)",
+                            "binary_value": None,
+                            "profile_value": profile_value,
+                        }
+                        results.append(result)
+                        warnings.append(key)
+                    # Otherwise, it's normal for distribution builds and we can skip
                     continue
 
-                all_valid = False
+                result = {
+                    "type": (
+                        "warning" if not self._is_critical_entitlement(key) else "error"
+                    ),
+                    "key": key,
+                    "message": f"Present in profile but missing from binary",
+                    "binary_value": None,
+                    "profile_value": profile_value,
+                }
+                results.append(result)
 
-        return all_valid
+                if self._is_critical_entitlement(key):
+                    all_critical_valid = False
+                    critical_mismatches.append(key)
+                else:
+                    warnings.append(key)
+                continue
+
+            # Recursively compare nested dictionaries
+            if isinstance(binary_value, dict) and isinstance(profile_value, dict):
+                nested_valid, nested_results = self._compare_entitlements(
+                    binary_value, profile_value, component_path
+                )
+                results.extend(nested_results)
+                if not nested_valid:
+                    all_critical_valid = False
+                continue
+
+            is_valid, message = self._compare_entitlement_values(
+                key, binary_value, profile_value
+            )
+            if not is_valid:
+                result = {
+                    "type": (
+                        "error" if self._is_critical_entitlement(key) else "warning"
+                    ),
+                    "key": key,
+                    "message": message,
+                    "binary_value": binary_value,
+                    "profile_value": profile_value,
+                }
+                results.append(result)
+
+                if self._is_critical_entitlement(key):
+                    all_critical_valid = False
+                    critical_mismatches.append(key)
+                else:
+                    warnings.append(key)
+            else:
+                result = {
+                    "type": "match",
+                    "key": key,
+                    "message": message,
+                }
+                results.append(result)
+                matched_count += 1
+
+        # Add summary to results
+        results.append(
+            {
+                "type": "summary",
+                "matched_count": matched_count,
+                "critical_mismatches": critical_mismatches,
+                "warnings": warnings,
+            }
+        )
+
+        return all_critical_valid, results
 
     def verify_entitlements(self) -> bool:
         """Verify that binary entitlements match provisioning profile entitlements."""
-        all_valid = True
+        all_critical_valid = True
 
         with IPAInspector(self.ipa_path) as inspector:
             components = inspector.get_components()
+            primary_components = [c for c in components if c.is_primary]
 
-            for component in components:
-                if not component.is_primary:
-                    continue
+            self.console.print(
+                f"\n[bold blue]🔍 Verifying {len(primary_components)} primary components[/]"
+            )
+            self.console.print("=" * 80)
 
-                self.console.print(f"\n[blue]Verifying component:[/] {component.path}")
+            for idx, component in enumerate(primary_components):
+                component_name = (
+                    component.path if str(component.path) != "." else "Main App"
+                )
 
-                # Get paths for binary and profile
+                # Print component header with clear separation
+                self.console.print(
+                    f"\n[bold cyan]Component {idx+1}/{len(primary_components)}: {component_name}[/]"
+                )
+                self.console.print("-" * 80)
+
                 binary_path = inspector.app_dir / component.executable
                 if component.path == Path("."):
                     profile_path = inspector.app_dir / "embedded.mobileprovision"
@@ -167,14 +268,69 @@ class SigningVerifier:
                         inspector.app_dir / component.path / "embedded.mobileprovision"
                     )
 
-                # Get entitlements
                 binary_ents = self._get_binary_entitlements(binary_path)
                 profile_ents = self._get_profile_entitlements(profile_path)
 
-                # Compare them
-                if not self._compare_entitlements(
+                component_valid, results = self._compare_entitlements(
                     binary_ents, profile_ents, str(component.path)
-                ):
-                    all_valid = False
+                )
 
-        return all_valid
+                # Process and display results
+                summary = next((r for r in results if r["type"] == "summary"), {})
+                matches = [r for r in results if r["type"] == "match"]
+                errors = [r for r in results if r["type"] == "error"]
+                warnings = [r for r in results if r["type"] == "warning"]
+
+                # Show summary of matches
+                matched_count = summary.get("matched_count", 0)
+                if matched_count > 0:
+                    self.console.print(
+                        f"[green]✓ {matched_count} entitlements match correctly[/]"
+                    )
+
+                # Show errors (if any)
+                for error in errors:
+                    self.console.print(f"[bold red]❌ Error: {error['key']}[/]")
+                    if error.get("binary_value") is not None:
+                        self.console.print(f"   Binary: {error['binary_value']}")
+                    if error.get("profile_value") is not None:
+                        self.console.print(f"   Profile: {error['profile_value']}")
+                    self.console.print(f"   {error['message']}")
+
+                # Show warnings (if any)
+                for warning in warnings:
+                    self.console.print(f"[yellow]⚠️ Warning: {warning['key']}[/]")
+                    if warning.get("binary_value") is not None:
+                        self.console.print(f"   Binary: {warning['binary_value']}")
+                    if warning.get("profile_value") is not None:
+                        self.console.print(f"   Profile: {warning['profile_value']}")
+                    self.console.print(f"   {warning['message']}")
+
+                # Component result summary
+                if not component_valid:
+                    self.console.print(
+                        f"[bold red]❌ Component has critical entitlement issues[/]"
+                    )
+                    all_critical_valid = False
+                else:
+                    if warnings:
+                        self.console.print(
+                            f"[bold yellow]⚠️ Component has {len(warnings)} non-critical warnings[/]"
+                        )
+                    else:
+                        self.console.print(
+                            f"[bold green]✓ Component entitlements valid[/]"
+                        )
+
+            # Final summary
+            self.console.print("\n" + "=" * 80)
+            if not all_critical_valid:
+                self.console.print(
+                    "[bold red]❌ Critical entitlement verification failed[/]"
+                )
+            else:
+                self.console.print(
+                    "[bold green]✓ Entitlement verification passed (no critical issues)[/]"
+                )
+
+        return all_critical_valid
