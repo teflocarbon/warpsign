@@ -19,6 +19,7 @@ from src.apple.developer_portal_api import DeveloperPortalAPI
 from src.apple.apple_account_login import AppleDeveloperAuth
 from src.core.cert_handler import CertHandler
 from src.core.verification import SigningVerifier
+from src.core.verifier import AppVerifier
 import plistlib
 from logger import get_console
 
@@ -774,11 +775,19 @@ class SignOrchestrator:
                 # Package signed IPA
                 self._package_ipa(inspector, temp_path, output_path)
 
-                # Verify the signed IPA
-                verifier = SigningVerifier(output_path)
-                if verifier.verify_entitlements():
-                    self.console.print("[green]✓ Entitlements verification passed")
+                # Verify the signed IPA with comprehensive checks
+                self.console.print("\n[bold blue]Verifying signed IPA...[/]")
+                verifier = AppVerifier(output_path)
+                verification_passed = verifier.verify()
+
+                if verification_passed:
+                    self.console.print(
+                        "[bold green]✅ Comprehensive verification passed[/]"
+                    )
                 else:
                     self.console.print(
-                        "[yellow]⚠️  Entitlements verification found issues"
+                        "[bold yellow]⚠️  Verification found issues. The app may fail to install.[/]"
+                    )
+                    self.console.print(
+                        "[yellow]Common causes: resources modified after signing, entitlement mismatches, or missing code signatures.[/]"
                     )

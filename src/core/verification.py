@@ -237,6 +237,80 @@ class SigningVerifier:
 
         return all_critical_valid, results
 
+    def _verify_code_signature(self, path: Path) -> Tuple[bool, str]:
+        """Verify the code signature of an app or component.
+        Returns a tuple of (is_valid, error_message)
+        """
+        try:
+            # Perform deep verification with strict checks
+            subprocess.run(
+                ["codesign", "--verify", "--deep", "--strict", str(path)],
+                capture_output=True,
+                check=True,
+            )
+            return True, ""
+        except subprocess.CalledProcessError as e:
+            error_output = e.stderr.decode("utf-8").strip()
+            return False, error_output
+
+    def verify_code_signatures(self) -> bool:
+        """Verify all code signatures in the IPA to ensure integrity."""
+        all_signatures_valid = True
+
+        with IPAInspector(self.ipa_path) as inspector:
+            app_dir = inspector.app_dir
+            components = inspector.get_components()
+
+            self.console.print(
+                f"\n[bold blue]🔍 Verifying code signatures for {len(components)} components[/]"
+            )
+            self.console.print("=" * 80)
+
+            # First verify the main app bundle
+            is_valid, error = self._verify_code_signature(app_dir)
+            if is_valid:
+                self.console.print("[green]✓ Main app bundle signature is valid[/]")
+            else:
+                self.console.print(
+                    f"[bold red]❌ Main app bundle signature invalid: {error}[/]"
+                )
+                all_signatures_valid = False
+
+            # Then verify each component separately
+            for idx, component in enumerate(components):
+                component_name = (
+                    component.path if str(component.path) != "." else "Main App Binary"
+                )
+
+                component_path = app_dir
+                if component.path != Path("."):
+                    component_path = app_dir / component.path
+
+                binary_path = app_dir / component.executable
+
+                # Verify the component's binary
+                is_valid, error = self._verify_code_signature(binary_path)
+                if is_valid:
+                    self.console.print(
+                        f"[green]✓ {component_name} signature is valid[/]"
+                    )
+                else:
+                    self.console.print(
+                        f"[bold red]❌ {component_name} signature invalid: {error}[/]"
+                    )
+                    all_signatures_valid = False
+
+            # Final summary
+            self.console.print("\n" + "=" * 80)
+            if all_signatures_valid:
+                self.console.print("[bold green]✓ All code signatures are valid[/]")
+            else:
+                self.console.print(
+                    "[bold red]❌ Code signature verification failed - some resources may have been modified after signing[/]"
+                )
+
+        return all_signatures_valid
+
     def verify_entitlements(self) -> bool:
         """Verify that binary entitlements match provisioning profile entitlements."""
         all_critical_valid = True
