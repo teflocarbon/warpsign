@@ -1,16 +1,14 @@
-#!/usr/bin/env python3
-
 from pathlib import Path
 import sys
 from typing import Optional, Tuple
 import os
 from rich.prompt import Prompt
 
-from src.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
-from src.sign_orchestrator import SignOrchestrator
 from arguments import create_parser, create_patching_options
 from logger import get_console
-from src.authentication_helper import authenticate_with_apple
+from src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
+from src.core.sign_orchestrator import SignOrchestrator
+from src.apple.authentication_helper import authenticate_with_apple
 
 
 def parse_vscode_args(argv: list[str]) -> list[str]:

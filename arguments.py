@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from typing import Optional
-from src.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
+from src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
 
 
 def create_parser() -> argparse.ArgumentParser:

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import sys
 from pathlib import Path
 import plistlib
@@ -7,7 +5,11 @@ from asn1crypto.cms import ContentInfo
 import json
 from rich.console import Console
 from rich.json import JSON
-from src.capability_mappings import CAPABILITY_MAPPING, SPECIAL_CAPABILITIES
+
+# Add the parent directory of 'src' to the system path.. kinda hacky but it works
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.apple.capability_mappings import CAPABILITY_MAPPING, SPECIAL_CAPABILITIES
 
 
 def dump_prov(prov_file: Path) -> dict:

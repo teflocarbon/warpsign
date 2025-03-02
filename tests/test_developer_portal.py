@@ -1,7 +1,7 @@
 from rich.table import Table
 import os
-from src.developer_portal_api import DeveloperPortalAPI
-from src.apple_account_login import AppleDeveloperAuth
+from apple.developer_portal_api import DeveloperPortalAPI
+from apple.apple_account_login import AppleDeveloperAuth
 from dotenv import load_dotenv
 import random
 from logger import get_console

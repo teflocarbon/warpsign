@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 import sys
 from pathlib import Path
@@ -13,14 +11,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from src.ipa_inspector import IPAInspector
-from src.bundle_mapper import BundleMapping, IDType
-from src.entitlements_processor import EntitlementsProcessor
-from src.app_patcher import AppPatcher, PatchingOptions
-from src.developer_portal_api import DeveloperPortalAPI
-from src.apple_account_login import AppleDeveloperAuth
-from src.cert_handler import CertHandler
-from src.verification import SigningVerifier
+from src.ipa.ipa_inspector import IPAInspector
+from src.core.bundle_mapper import BundleMapping, IDType
+from src.ipa.entitlements_processor import EntitlementsProcessor
+from src.ipa.app_patcher import AppPatcher, PatchingOptions
+from src.apple.developer_portal_api import DeveloperPortalAPI
+from src.apple.apple_account_login import AppleDeveloperAuth
+from src.core.cert_handler import CertHandler
+from src.core.verification import SigningVerifier
 import plistlib
 from logger import get_console
 
@@ -626,9 +624,13 @@ class SignOrchestrator:
         frameworks_dir = app_dir / "Frameworks"
         frameworks_dir.mkdir(exist_ok=True)
 
+        # Pathing is really fucky here.. probably need to fix this but it works for now.
+
         # Handle plugins dylib
         if self.patching_options.inject_plugins_patcher:
-            plugins_dylib = Path(__file__).parent / "patches" / "pluginsinject.dylib"
+            plugins_dylib = (
+                Path(__file__).parent.parent / "patches" / "pluginsinject.dylib"
+            )
             if not plugins_dylib.exists():
                 raise ValueError(f"Plugins patcher dylib not found: {plugins_dylib}")
 
@@ -642,7 +644,9 @@ class SignOrchestrator:
         # Handle home indicator dylib
         if self.patching_options.hide_home_indicator:
             home_dylib = (
-                Path(__file__).parent / "patches" / "ForceHideHomeIndicator.dylib"
+                Path(__file__).parent.parent
+                / "patches"
+                / "ForceHideHomeIndicator.dylib"
             )
             if not home_dylib.exists():
                 raise ValueError(f"Home indicator dylib not found: {home_dylib}")

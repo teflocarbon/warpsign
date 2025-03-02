@@ -1,8 +1,8 @@
 import os
 import sys
 import getpass
-from src.apple_account_login import AppleDeveloperAuth
 from logger import get_console
+from src.apple.apple_account_login import AppleDeveloperAuth
 
 
 def authenticate_with_apple(

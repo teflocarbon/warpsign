@@ -1,16 +1,15 @@
-#!/usr/bin/env python3
-
 import sys
 import base64
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 import toml
 import requests
-from src.github import GitHubHandler
-from src.litterbox import LitterboxUploader
+
 from arguments import create_parser
 from logger import get_console
-from src.authentication_helper import authenticate_with_apple
+from src.apple.authentication_helper import authenticate_with_apple
+from src.ci.github import GitHubHandler
+from src.ci.litterbox import LitterboxUploader
 
 console = get_console()
 
