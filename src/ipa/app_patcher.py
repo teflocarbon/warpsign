@@ -98,18 +98,22 @@ class AppPatcher:
         """Remove unnecessary app bundle components"""
         self.console.log("[blue]Cleaning app bundle[/]")
 
+        # Currently breaks codesigning as we're manipulating the codesignature afterwards.
+        # We need to do this way earlier, not at the end.
+
         # Remove Watch app placeholder
-        for watch_name in ["com.apple.WatchPlaceholder", "Watch"]:
-            watch_dir = app_dir / watch_name
-            if watch_dir.exists():
-                self.console.log(f"[green]Removing Watch placeholder:[/] {watch_dir}")
-                shutil.rmtree(watch_dir)
+        # for watch_name in ["com.apple.WatchPlaceholder", "Watch"]:
+        #     watch_dir = app_dir / watch_name
+        #     if watch_dir.exists():
+        #         self.console.log(f"[green]Removing Watch placeholder:[/] {watch_dir}")
+        #         shutil.rmtree(watch_dir)
 
         # Remove AppStore DRM leftovers
+
         sc_info = app_dir / "SC_Info"
         if sc_info.exists():
             self.console.log("[yellow]Warning: Found AppStore DRM metadata[/]")
-            self.console.log("[yellow]Removing SC_Info - app must not be encrypted[/]")
+            self.console.log("[yellow]Removing SC_Info - app may not be encrypted[/]")
             shutil.rmtree(sc_info)
 
     def _filter_replacements(self, replacements: Dict[str, str]) -> Dict[str, str]:
