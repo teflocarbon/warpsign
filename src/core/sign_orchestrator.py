@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 import tempfile
 from rich.prompt import Confirm, Prompt
+from rich.panel import Panel
+from rich.syntax import Syntax
 import subprocess
 import shutil
 import json
@@ -20,6 +22,7 @@ from src.apple.apple_account_login import AppleDeveloperAuth
 from src.core.cert_handler import CertHandler
 from src.core.verification import SigningVerifier
 from src.core.verifier import AppVerifier
+from src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
 import plistlib
 from logger import get_console
 
@@ -361,6 +364,7 @@ class SignOrchestrator:
 
     def _update_info_plists(self, inspector: IPAInspector, components, bundle_plans):
         """Update Info.plist files using the single bundle mapper"""
+
         for component in components:
             if not component.is_primary:
                 continue
@@ -374,10 +378,38 @@ class SignOrchestrator:
             info_plist_path = inspector.app_dir / component.path / "Info.plist"
             self.console.print(f"[blue]Updating Info.plist:[/] {info_plist_path}")
 
+            # Load the original plist content for diffing
+            with open(info_plist_path, "rb") as f:
+                original_plist = plistlib.load(f)
+
+            # Convert to standard dict for diffing (handles special types like Data)
+            original_dict = plist_to_diffable_dict(original_plist)
+
+            # Update the plist
             self.patcher.patch_info_plist(
                 info_plist_path,
                 bundle_mapper=self.bundle_mapper,  # Use our single source of truth
                 is_main_app=(component.path == Path(".")),
+            )
+
+            # Load the updated plist content
+            with open(info_plist_path, "rb") as f:
+                updated_plist = plistlib.load(f)
+
+            # Convert to standard dict for diffing
+            updated_dict = plist_to_diffable_dict(updated_plist)
+
+            # Show the diff
+            component_name = (
+                "Main App" if component.path == Path(".") else component.path
+            )
+            self.console.print(f"\n[cyan]Info.plist changes for {component_name}:[/]")
+            print_json_diff(
+                self.console,
+                original_dict,
+                updated_dict,
+                "Original Info.plist",
+                "Updated Info.plist",
             )
 
     def _create_provisioning_profiles(
@@ -439,18 +471,31 @@ class SignOrchestrator:
             self.console.print(f"[green]Profile saved:[/] {profile_path}")
 
     def _show_entitlements_mapping(self, original_ents, mapped_ents, removals=None):
-        """Display entitlements mapping relationships"""
+        """Display entitlements mapping relationships with visual diff"""
+
+        # Show original entitlements
         self.console.print("[cyan]Original entitlements:[/]")
         self.console.print_json(json.dumps(original_ents, indent=4))
 
+        # Remove entitlements if specified
+        filtered_mapped_ents = mapped_ents
         if removals:
             self.console.print("\n[yellow]Removed entitlements:[/]")
             self.console.print_json(json.dumps(list(removals), indent=4))
             # Filter out removed entitlements
-            mapped_ents = {k: v for k, v in mapped_ents.items() if k not in removals}
+            filtered_mapped_ents = {
+                k: v for k, v in mapped_ents.items() if k not in removals
+            }
 
+        # Show final mapped entitlements
         self.console.print("\n[cyan]Final mapped entitlements:[/]")
-        self.console.print_json(json.dumps(mapped_ents, indent=4))
+        self.console.print_json(json.dumps(filtered_mapped_ents, indent=4))
+
+        # Generate and show diff between original and mapped entitlements
+        self.console.print("\n[cyan]Entitlements changes (diff):[/]")
+        print_json_diff(
+            self.console, original_ents, filtered_mapped_ents, "Original", "Mapped"
+        )
 
     def _ensure_critical_entitlements(self, entitlements: dict, bundle_id: str) -> dict:
         """Check and add critical entitlements if missing"""
