@@ -81,7 +81,7 @@ def create_json_diff(
     )
 
     if not diff:
-        return ["[yellow]No differences found between JSON objects[/]"]
+        return []  # Return an empty list instead of a formatted message
 
     # Process diff to add rich formatting
     formatted_diff = []
@@ -157,28 +157,34 @@ def print_json_diff(
         original, modified, original_label, modified_label
     )
 
-    for line in formatted_diff:
-        if line.startswith("[green]+"):
-            # Extract the content after the + sign
-            content = line.replace("[green]+", "").replace("[/green]", "")
-            table.add_row(
-                "+++",
-                Text(content, style="green"),
-            )
-        elif line.startswith("[red]-"):
-            # Extract the content after the - sign
-            content = line.replace("[red]-", "").replace("[/red]", "")
-            table.add_row(
-                "---",
-                Text(content, style="red"),
-            )
-        elif line.startswith("[cyan]@@"):
-            # Format hunk headers
-            content = line.replace("[cyan]", "").replace("[/cyan]", "")
-            table.add_row("🔍", Text(content, style="cyan dim"))
-        elif not (line.startswith("+++") or line.startswith("---")):
-            # Regular context lines
-            table.add_row("", Text(line))
+    # Handle empty diff (no changes)
+    if not formatted_diff:
+        table.add_row(
+            "", Text("No differences found between JSON objects", style="yellow")
+        )
+    else:
+        for line in formatted_diff:
+            if line.startswith("[green]+"):
+                # Extract the content after the + sign
+                content = line.replace("[green]+", "").replace("[/green]", "")
+                table.add_row(
+                    "+++",
+                    Text(content, style="green"),
+                )
+            elif line.startswith("[red]-"):
+                # Extract the content after the - sign
+                content = line.replace("[red]-", "").replace("[/red]", "")
+                table.add_row(
+                    "---",
+                    Text(content, style="red"),
+                )
+            elif line.startswith("[cyan]@@"):
+                # Format hunk headers
+                content = line.replace("[cyan]", "").replace("[/cyan]", "")
+                table.add_row("🔍", Text(content, style="cyan dim"))
+            elif not (line.startswith("+++") or line.startswith("---")):
+                # Regular context lines
+                table.add_row("", Text(line))
 
     # Show detailed key differences
     if added_keys or removed_keys or modified_keys:
