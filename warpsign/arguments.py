@@ -5,6 +5,17 @@ from warpsign.src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyl
 from rich_argparse import RawDescriptionRichHelpFormatter  # Import the formatter
 
 
+def create_parser():
+    """Create and return an argument parser with signing arguments."""
+    parser = argparse.ArgumentParser(
+        prog="warpsign",
+        description="WarpSign: A tool for signing and managing iOS applications",
+        formatter_class=RawDescriptionRichHelpFormatter,
+    )
+    add_signing_arguments(parser)
+    return parser
+
+
 def add_signing_arguments(parser):
     """Add all signing-related arguments to an existing parser."""
     # Required argument
