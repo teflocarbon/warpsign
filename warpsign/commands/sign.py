@@ -31,8 +31,28 @@ def verify_ipa_exists(ipa_path: Path, console) -> bool:
 
 def determine_certificate_type(cert_dir_path: Path, console) -> Optional[str]:
     """Determine which certificate type to use based on available certificates."""
-    dist_exists = (cert_dir_path / "distribution").exists()
-    dev_exists = (cert_dir_path / "development").exists()
+    # Ensure base certificate directory exists
+    cert_dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Ensure distribution and development directories exist
+
+    # Create distribution directory
+    if not (cert_dir_path / "distribution").exists():
+        (cert_dir_path / "distribution").mkdir(exist_ok=True)
+        console.print(
+            f"[green]Created distribution directory: {cert_dir_path / 'distribution'}[/]"
+        )
+
+    # Create development directory
+    if not (cert_dir_path / "development").exists():
+        (cert_dir_path / "development").mkdir(exist_ok=True)
+        console.print(
+            f"[green]Created development directory: {cert_dir_path / 'development'}[/]"
+        )
+
+    # Check if certificate files exist in these directories
+    dist_exists = (cert_dir_path / "distribution" / "cert.p12").exists()
+    dev_exists = (cert_dir_path / "development" / "cert.p12").exists()
 
     cert_type = os.getenv("WARPSIGN_CERT_TYPE")
 
@@ -146,7 +166,11 @@ def main(parsed_args=None) -> int:
     cert_type = determine_certificate_type(cert_dir_path, console)
     if not cert_type:
         console.print(
-            f"[red]Error: No certificates found. Please add your certificates to {cert_dir_path}[/]"
+            f"[red]Error: No valid certificates found.[/]\n"
+            f"Please add your certificates to:\n"
+            f"- Development: {cert_dir_path}/development/cert.p12\n"
+            f"- Distribution: {cert_dir_path}/distribution/cert.p12\n"
+            f"And the corresponding password in a cert_pass.txt file in the same directory."
         )
         return 1
 

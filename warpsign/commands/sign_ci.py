@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Optional
 import toml
 import requests
 import argparse
+import os
 
 from warpsign.arguments import add_signing_arguments, create_patching_options
 from warpsign.logger import get_console
@@ -17,9 +18,11 @@ console = get_console()
 
 def load_config() -> dict:
     """Load and validate the configuration file."""
-    config_path = Path(__file__).parent / "config.toml"
+    config_path = Path.home() / ".warpsign" / "config.toml"
     if not config_path.exists():
-        console.print("[red]Error: config.toml not found[/]")
+        console.print(
+            f"[red]Error: config.toml not found. Have you checked if '{config_path}' exists?[/]"
+        )
         sys.exit(1)
     return toml.load(config_path)
 
@@ -36,19 +39,6 @@ def read_cert_and_password(cert_path: Path) -> Tuple[str, str]:
     password = pass_file.read_text().strip()
 
     return cert_content, password
-
-
-def create_ci_parser():
-    """Create argument parser with CI-specific options."""
-    parser = create_parser()
-    parser.add_argument(
-        "--certificate",
-        "-c",
-        choices=["development", "distribution"],
-        default="development",
-        help="Certificate type to use for signing [default: development]",
-    )
-    return parser
 
 
 def download_and_rename_ipa(signed_url: str, original_path: Path) -> Path:
@@ -106,11 +96,38 @@ def handle_authentication() -> Tuple[str, str, str, str]:
     return cookie_content, session_content, auth_id, auth.email
 
 
+def setup_certificate_config() -> Path:
+    """Setup certificate configuration."""
+    cert_dir = os.getenv("WARPSIGN_CERT_DIR")
+    return Path(cert_dir) if cert_dir else Path.home() / ".warpsign" / "certificates"
+
+
 def upload_certificates(gh_secrets: GitHubHandler, config: dict) -> None:
     """Upload development and distribution certificates to GitHub secrets."""
-    cert_config = config["certificates"]
-    dev_path = Path(cert_config["development_path"])
-    dist_path = Path(cert_config["distribution_path"])
+    cert_dir_path = setup_certificate_config()
+
+    # Ensure certificate directories exist
+    dev_path = cert_dir_path / "development"
+    dist_path = cert_dir_path / "distribution"
+
+    # Check if certificate files exist
+    if (
+        not (dev_path / "cert.p12").exists()
+        or not (dev_path / "cert_pass.txt").exists()
+    ):
+        console.print(
+            f"[red]Error: Development certificate files not found in {dev_path}[/]"
+        )
+        sys.exit(1)
+
+    if (
+        not (dist_path / "cert.p12").exists()
+        or not (dist_path / "cert_pass.txt").exists()
+    ):
+        console.print(
+            f"[red]Error: Distribution certificate files not found in {dist_path}[/]"
+        )
+        sys.exit(1)
 
     # Upload development certificate
     dev_cert, dev_pass = read_cert_and_password(dev_path)
@@ -191,12 +208,8 @@ def main(parsed_args=None) -> int:
     """
     console.print("[bold blue]WarpSign CI[/]")
 
-    if parsed_args is None:
-        # Only parse arguments if not provided (direct script execution)
-        parser = create_ci_parser()
-        args = parser.parse_args()
-    else:
-        args = parsed_args
+    # Args are provided from CLI. We don't support running this function directly anymore.
+    args = parsed_args
 
     if args.icon:
         console.print("[red]Error: --icon is not supported with CI at the moment[/]")

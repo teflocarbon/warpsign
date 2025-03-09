@@ -29,8 +29,8 @@ def main():
         "--certificate",
         "-c",
         choices=["development", "distribution"],
-        default="development",
-        help="Certificate type to use for signing [default: development]",
+        required=True,
+        help="Certificate type to use for signing",
     )
 
     args = parser.parse_args()

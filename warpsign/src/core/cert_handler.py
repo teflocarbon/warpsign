@@ -23,13 +23,6 @@ class CertHandler:
             )
         )
 
-        # Create the cert directory if it doesn't exist
-        if not self.cert_dir.exists():
-            self.cert_dir.mkdir(parents=True, exist_ok=True)
-            self.console.log(
-                f"[yellow]Created certificate directory:[/] {self.cert_dir}"
-            )
-
         # Get certificate type from environment or parameter
         self.cert_type = cert_type or os.getenv("WARPSIGN_CERT_TYPE", "development")
         if self.cert_type not in ["development", "distribution"]:
