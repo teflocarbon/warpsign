@@ -144,7 +144,9 @@ def upload_certificates(gh_secrets: GitHubHandler, config: dict) -> None:
 
 def build_signing_args(args) -> str:
     """Build signing arguments string from parsed arguments."""
-    skip_keys = {"ipa_path", "certificate", "encode_ids", "patch_ids"}
+    # We need to skip some keys that are used for other purposes. Some are
+    # automatically included whilst others are internal only.
+    skip_keys = {"ipa_path", "certificate", "encode_ids", "patch_ids", "command"}
     signing_args = []
 
     for key, value in vars(args).items():
