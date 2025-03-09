@@ -3,7 +3,7 @@
 A lightning-fast iOS app signing solution that leverages the Apple Developer Portal API for seamless entitlements management and code signing.
 
 ![Status](https://img.shields.io/badge/status-beta-yellow)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 ## 📋 Table of Contents
@@ -38,7 +38,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 - **Paid Apple Developer Account**. Free accounts will never be supported.
 - Apple Developer or Distribution Certificate (generated via Developer Portal)
-- Python 3.8 or higher
+- Python 3.10 or higher
 - macOS (Apple signing requirements)
 
 > [!WARNING]
@@ -60,7 +60,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 ### CI Signing
 
 - Any operating system (Windows, macOS, or Linux)
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Active internet connection
 - GitHub account with repository access
 
@@ -79,9 +79,10 @@ pip install -r requirements.txt
 
 ## 📝 Certificate Setup
 
-
 > [!NOTE]
+>
 > #### If you don't have a certificate.
+>
 > - If you're using macOS, follow this [guide from Apple](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates/)
 > - If you're using Windows. You can follow this [guide](https://mzansibytes.com/2021/08/28/create-apple-developer-certificates-on-windows/)
 > - If you're using Linux. You can follow this [guide](https://gist.github.com/boodle/77436b2d9facb8e938ad)
