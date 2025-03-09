@@ -93,7 +93,7 @@ def print_configuration_summary(console, args, options: PatchingOptions) -> None
 def setup_certificate_config() -> Tuple[Path, Optional[str]]:
     """Setup certificate configuration."""
     cert_dir = os.getenv("WARPSIGN_CERT_DIR")
-    return Path(cert_dir) if cert_dir else Path("certificates")
+    return Path(cert_dir) if cert_dir else Path.home() / ".warpsign" / "certificates"
 
 
 def sign_application(
@@ -145,7 +145,9 @@ def main(parsed_args=None) -> int:
     # Determine certificate type
     cert_type = determine_certificate_type(cert_dir_path, console)
     if not cert_type:
-        console.print("[red]Error: No certificates found[/]")
+        console.print(
+            f"[red]Error: No certificates found. Please add your certificates to {cert_dir_path}[/]"
+        )
         return 1
 
     # Print configuration summary

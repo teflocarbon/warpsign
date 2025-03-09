@@ -38,6 +38,12 @@ class SignOrchestrator:
         # Convert cert_dir to Path if it's a string
         if cert_dir:
             cert_dir = Path(cert_dir)
+            # Ensure certificate directory exists
+            if not cert_dir.exists():
+                cert_dir.mkdir(parents=True, exist_ok=True)
+                self.console.print(
+                    f"[yellow]Created certificate directory:[/] {cert_dir}"
+                )
 
         # Initialize cert handler with configuration
         self.cert_handler = CertHandler(cert_type=cert_type, cert_dir=cert_dir)
