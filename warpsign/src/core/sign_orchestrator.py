@@ -13,18 +13,18 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from src.ipa.ipa_inspector import IPAInspector
-from src.core.bundle_mapper import BundleMapping, IDType
-from src.ipa.entitlements_processor import EntitlementsProcessor
-from src.ipa.app_patcher import AppPatcher, PatchingOptions
-from src.apple.developer_portal_api import DeveloperPortalAPI
-from src.apple.apple_account_login import AppleDeveloperAuth
-from src.core.cert_handler import CertHandler
-from src.core.verification import SigningVerifier
-from src.core.verifier import AppVerifier
-from src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
+from warpsign.src.ipa.ipa_inspector import IPAInspector
+from warpsign.src.core.bundle_mapper import BundleMapping, IDType
+from warpsign.src.ipa.entitlements_processor import EntitlementsProcessor
+from warpsign.src.ipa.app_patcher import AppPatcher, PatchingOptions
+from warpsign.src.apple.developer_portal_api import DeveloperPortalAPI
+from warpsign.src.apple.apple_account_login import AppleDeveloperAuth
+from warpsign.src.core.cert_handler import CertHandler
+from warpsign.src.core.verification import SigningVerifier
+from warpsign.src.core.verifier import AppVerifier
+from warpsign.src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
 import plistlib
-from logger import get_console
+from warpsign.logger import get_console
 
 
 class SignOrchestrator:

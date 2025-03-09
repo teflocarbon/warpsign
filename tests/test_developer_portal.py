@@ -4,7 +4,7 @@ from apple.developer_portal_api import DeveloperPortalAPI
 from apple.apple_account_login import AppleDeveloperAuth
 from dotenv import load_dotenv
 import random
-from logger import get_console
+from warpsign.logger import get_console
 
 console = get_console()
 

@@ -1,8 +1,8 @@
 import os
 import sys
 import getpass
-from logger import get_console
-from src.apple.apple_account_login import AppleDeveloperAuth
+from warpsign.logger import get_console
+from warpsign.src.apple.apple_account_login import AppleDeveloperAuth
 
 
 def authenticate_with_apple(

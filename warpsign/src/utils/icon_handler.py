@@ -3,7 +3,7 @@ import shutil
 from uuid import uuid4
 from typing import Dict
 import plistlib
-from logger import get_console
+from warpsign.logger import get_console
 
 try:
     from PIL import Image

@@ -3,7 +3,7 @@ from enum import Enum, auto
 from typing import Dict, Optional, List, Tuple, Set
 import random
 import string
-from logger import get_console
+from warpsign.logger import get_console
 
 
 class IDType(Enum):

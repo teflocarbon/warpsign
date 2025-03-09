@@ -3,12 +3,13 @@ import sys
 from typing import Optional, Tuple
 import os
 from rich.prompt import Prompt
+import argparse
 
-from arguments import create_parser, create_patching_options
-from logger import get_console
-from src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
-from src.core.sign_orchestrator import SignOrchestrator
-from src.apple.authentication_helper import authenticate_with_apple
+from warpsign.arguments import add_signing_arguments, create_patching_options
+from warpsign.logger import get_console
+from warpsign.src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
+from warpsign.src.core.sign_orchestrator import SignOrchestrator
+from warpsign.src.apple.authentication_helper import authenticate_with_apple
 
 
 def parse_vscode_args(argv: list[str]) -> list[str]:
@@ -108,13 +109,25 @@ def sign_application(
         return False
 
 
-def main() -> int:
-    console = get_console()
-    parser = create_parser()
+def main(parsed_args=None) -> int:
+    """Main sign function that does the actual work.
 
-    # Parse and fix arguments
-    sys.argv = parse_vscode_args(sys.argv)
-    args = parser.parse_args()
+    Args:
+        parsed_args: Optional pre-parsed arguments (from CLI)
+    """
+    console = get_console()
+
+    if parsed_args is None:
+        # Only parse arguments if not provided (direct script execution)
+        parser = argparse.ArgumentParser(
+            description="Sign iOS applications with custom options.",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        add_signing_arguments(parser)
+        sys.argv = parse_vscode_args(sys.argv)
+        args = parser.parse_args()
+    else:
+        args = parsed_args
 
     # Verify IPA exists
     if not verify_ipa_exists(args.ipa_path, console):
@@ -157,5 +170,14 @@ def main() -> int:
             pass
 
 
+def run_sign_command(args):
+    """Entry point for the sign command from CLI"""
+    # Just pass the parsed args to main
+    return main(parsed_args=args)
+
+
+# For direct script execution - route through the CLI
 if __name__ == "__main__":
-    sys.exit(main())
+    from warpsign.cli import main as cli_main
+
+    sys.exit(cli_main())

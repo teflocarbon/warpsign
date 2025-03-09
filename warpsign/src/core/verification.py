@@ -2,9 +2,9 @@ import plistlib
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
-from logger import get_console
+from warpsign.logger import get_console
 
-from src.ipa.ipa_inspector import IPAInspector
+from warpsign.src.ipa.ipa_inspector import IPAInspector
 
 
 class SigningVerifier:

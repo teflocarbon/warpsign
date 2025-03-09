@@ -1,29 +1,12 @@
 import argparse
 from pathlib import Path
 from typing import Optional
-from src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
+from warpsign.src.ipa.app_patcher import PatchingOptions, StatusBarStyle, UIStyle
+from rich_argparse import RawDescriptionRichHelpFormatter  # Import the formatter
 
 
-def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Sign iOS applications with custom options.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # Simple signing with defaults
-    %(prog)s my-app.ipa
-
-    # Enable debug mode (requires development certificate)
-    %(prog)s my-app.ipa --patch-debug
-
-    # Force original bundle ID for push notifications (requires distribution certificate)
-    %(prog)s my-app.ipa --force-original-id
-
-    # Enable file sharing and promotion support
-    %(prog)s my-app.ipa --patch-file-sharing --patch-promotion
-        """,
-    )
-
+def add_signing_arguments(parser):
+    """Add all signing-related arguments to an existing parser."""
     # Required argument
     parser.add_argument("ipa_path", type=Path, help="Path to the IPA file to sign")
 
@@ -138,8 +121,6 @@ Examples:
         action="store_true",
         help="Remove URL schemes registration [default: disabled]",
     )
-
-    return parser
 
 
 def create_patching_options(args) -> PatchingOptions:

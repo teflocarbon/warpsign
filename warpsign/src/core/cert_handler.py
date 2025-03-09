@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, List
 import subprocess
-from logger import get_console
+from warpsign.logger import get_console
 import random
 import string
 import re

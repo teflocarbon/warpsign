@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional
 import toml
 import requests
+import argparse
 
-from arguments import create_parser
-from logger import get_console
-from src.apple.authentication_helper import authenticate_with_apple
-from src.ci.github import GitHubHandler
-from src.ci.litterbox import LitterboxUploader
+from warpsign.arguments import add_signing_arguments, create_patching_options
+from warpsign.logger import get_console
+from warpsign.src.apple.authentication_helper import authenticate_with_apple
+from warpsign.src.ci.github import GitHubHandler
+from warpsign.src.ci.litterbox import LitterboxUploader
 
 console = get_console()
 
@@ -182,17 +183,24 @@ def handle_workflow_execution(
         sys.exit(1)
 
 
-def main():
-    """Main execution flow."""
+def main(parsed_args=None) -> int:
+    """Main CI signing function that does the actual work.
+
+    Args:
+        parsed_args: Optional pre-parsed arguments (from CLI)
+    """
     console.print("[bold blue]WarpSign CI[/]")
 
-    # Parse arguments
-    parser = create_ci_parser()
-    args = parser.parse_args()
+    if parsed_args is None:
+        # Only parse arguments if not provided (direct script execution)
+        parser = create_ci_parser()
+        args = parser.parse_args()
+    else:
+        args = parsed_args
 
     if args.icon:
         console.print("[red]Error: --icon is not supported with CI at the moment[/]")
-        sys.exit(1)
+        return 1
 
     try:
         # Load configuration and initialize GitHub handler
@@ -234,11 +242,21 @@ def main():
         console.print(
             f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions"
         )
+        return 0
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/]")
-        sys.exit(1)
+        return 1
 
 
+def run_sign_ci_command(args):
+    """Entry point for the sign-ci command from CLI"""
+    # Just pass the parsed args to main
+    return main(parsed_args=args)
+
+
+# For direct script execution - route through the CLI
 if __name__ == "__main__":
-    main()
+    from warpsign.cli import main as cli_main
+
+    sys.exit(cli_main())

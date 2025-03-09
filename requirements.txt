@@ -1,4 +1,5 @@
 rich
+rich-argparse
 requests
 python-dotenv
 srp

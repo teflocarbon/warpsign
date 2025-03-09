@@ -1,6 +1,6 @@
 from pathlib import Path
-from logger import get_console
-from src.core.verification import SigningVerifier
+from warpsign.logger import get_console
+from warpsign.src.core.verification import SigningVerifier
 
 
 class AppVerifier:
