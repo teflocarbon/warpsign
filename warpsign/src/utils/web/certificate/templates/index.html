@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WarpSign Certificate Upload</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles.css') }}"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>WarpSign Certificate Upload</h1>
+      <p>
+        Use this interface to upload your Apple Developer certificates for
+        signing iOS apps.
+      </p>
+
+      <!-- Development Certificate Section -->
+      <div class="cert-section">
+        <h2>Development Certificate</h2>
+        <p>
+          Upload your development certificate (.p12 file) for signing
+          development builds.
+        </p>
+
+        <div id="dev-dropzone" class="dropzone">
+          <p>
+            Drag and drop your development certificate here, or click to select
+            file.
+          </p>
+          <p id="dev-filename"></p>
+        </div>
+        <input type="file" id="dev-file-input" style="display: none" />
+
+        <div class="input-group">
+          <label for="dev-password">Certificate Password:</label>
+          <input
+            type="password"
+            id="dev-password"
+            placeholder="Enter password"
+          />
+        </div>
+
+        <button class="btn" id="dev-upload-btn">
+          Upload Development Certificate
+        </button>
+        <div id="dev-message" class="message-container"></div>
+      </div>
+
+      <!-- Distribution Certificate Section -->
+      <div class="cert-section">
+        <h2>Distribution Certificate</h2>
+        <p>
+          Upload your distribution certificate (.p12 file) for signing release
+          builds.
+        </p>
+
+        <div id="dist-dropzone" class="dropzone">
+          <p>
+            Drag and drop your distribution certificate here, or click to select
+            file.
+          </p>
+          <p id="dist-filename"></p>
+        </div>
+        <input type="file" id="dist-file-input" style="display: none" />
+
+        <div class="input-group">
+          <label for="dist-password">Certificate Password:</label>
+          <input
+            type="password"
+            id="dist-password"
+            placeholder="Enter password"
+          />
+        </div>
+
+        <button class="btn" id="dist-upload-btn">
+          Upload Distribution Certificate
+        </button>
+        <div id="dist-message" class="message-container"></div>
+      </div>
+
+      <div style="text-align: center; margin-top: 30px">
+        <button class="btn" id="done-btn">Done</button>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  </body>
+</html>

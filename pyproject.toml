@@ -17,6 +17,8 @@ dependencies = [
     "pillow",
     "toml",
     "rich-argparse",
+    "flask",
+    "jinja2",
 ]
 
 [project.scripts]

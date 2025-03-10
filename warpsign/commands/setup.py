@@ -1,14 +1,24 @@
 import os
 import shutil
 import toml
+import webbrowser
+import threading
+import time
 from pathlib import Path
 from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt, Confirm, IntPrompt
 from rich.text import Text
 from rich.markdown import Markdown
 from rich import box
 from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from warpsign.logger import get_console
+from warpsign.src.utils.web.certificate.server import (
+    start_certificate_server,
+    is_done,
+    get_uploaded_certs,
+)
+import requests
 
 console = get_console()
 
@@ -178,6 +188,137 @@ def setup_directory_structure():
             console.print("[bold red]Failed to create configuration file.[/bold red]")
 
 
+def setup_certificates():
+    """Set up certificates using a browser-based UI."""
+    base_dir = Path.home() / ".warpsign" / "certificates"
+    dist_dir = base_dir / "distribution"
+    dev_dir = base_dir / "development"
+
+    # Ensure certificate directories exist
+    for dir_path in [dist_dir, dev_dir]:
+        ensure_directory_exists(dir_path)
+
+    # Use a fixed port
+    port = 8765
+
+    console.print(
+        Panel(
+            "Starting certificate upload interface...",
+            title="Certificate Upload",
+            border_style="green",
+        )
+    )
+
+    # Start the Flask server in a separate thread
+    server_thread = threading.Thread(
+        target=start_certificate_server, args=(port, base_dir), daemon=True
+    )
+    server_thread.start()
+
+    # Wait a moment for the server to start
+    time.sleep(2)
+
+    # Verify server is running by checking the debug endpoint
+    try:
+        response = requests.get(f"http://localhost:{port}/debug")
+        if response.status_code == 200:
+            debug_info = response.json()
+            console.print("[green]✓ Server started successfully[/green]")
+
+            # Check if files exist
+            if not all(
+                [
+                    debug_info.get("template_exists"),
+                    debug_info.get("css_exists"),
+                    debug_info.get("js_exists"),
+                ]
+            ):
+                console.print(
+                    "[yellow]Warning: Some required files may be missing:[/yellow]"
+                )
+                for key in ["template_exists", "css_exists", "js_exists"]:
+                    if not debug_info.get(key):
+                        console.print(
+                            f"  [red]× {key.replace('_exists', '')} file not found[/red]"
+                        )
+    except requests.exceptions.ConnectionError:
+        console.print(
+            "[red]× Could not connect to certificate server. Interface may not load correctly.[/red]"
+        )
+
+    # Open the browser
+    url = f"http://localhost:{port}"
+    console.print(f"Opening browser to [link={url}]{url}[/link]")
+    webbrowser.open(url)
+
+    console.print(
+        "\n[dim]Please upload your certificates and click Done in the browser window.[/dim]"
+    )
+    console.print(
+        "[dim]If the page appears empty, try refreshing it or check the terminal for errors.[/dim]"
+    )
+
+    # Check for certificate uploads and done flag
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold green]Waiting for certificate upload...[/bold green]"),
+        console=console,
+    ) as progress:
+        progress_task = progress.add_task("", total=None)
+        last_status_message = ""
+
+        while not is_done() and server_thread.is_alive():
+            try:
+                # Check upload status directly - no need for HTTP polling
+                uploads = get_uploaded_certs()
+                current_status = ""
+
+                if uploads["development"] and uploads["distribution"]:
+                    current_status = "[bold green]Both certificates uploaded! Click Done when ready.[/bold green]"
+                elif uploads["development"]:
+                    current_status = (
+                        "[bold green]Development certificate uploaded![/bold green]"
+                    )
+                elif uploads["distribution"]:
+                    current_status = (
+                        "[bold green]Distribution certificate uploaded![/bold green]"
+                    )
+
+                # Only update the display if the status has changed
+                if current_status and current_status != last_status_message:
+                    progress.update(progress_task, description=current_status)
+                    last_status_message = current_status
+
+                progress.update(progress_task)
+                time.sleep(0.3)
+
+            except KeyboardInterrupt:
+                console.print("[yellow]\nUpload process interrupted by user[/yellow]")
+                break
+
+    # Check which certificates were uploaded
+    dev_cert = dev_dir / "cert.p12"
+    dist_cert = dist_dir / "cert.p12"
+
+    console.print("\n[bold green]Certificate upload complete![/bold green]")
+
+    table = Table(title="Uploaded Certificates", box=box.ROUNDED)
+    table.add_column("Type", style="cyan")
+    table.add_column("Status", style="green")
+
+    table.add_row(
+        "Development Certificate", "✓ Uploaded" if dev_cert.exists() else "Not uploaded"
+    )
+    table.add_row(
+        "Distribution Certificate",
+        "✓ Uploaded" if dist_cert.exists() else "Not uploaded",
+    )
+
+    console.print(table)
+
+    return True
+
+
 def run_setup_command(args):
     """Run the setup command."""
     console.print(
@@ -185,11 +326,23 @@ def run_setup_command(args):
             Text("WarpSign Setup Wizard", style="bold magenta"),
             subtitle="Let's get you ready to sign apps!",
             border_style="green",
-            padding=(1, 9),
+            padding=(1, 2),
         )
     )
 
-    setup_directory_structure()
+    # Offer the user different setup options
+    console.print("\n[bold]What would you like to set up?[/bold]")
+    console.print("[1] Directory structure and configuration")
+    console.print("[2] Upload certificates")
+    console.print("[3] Complete setup (both options)")
+
+    choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3"], default=3)
+
+    if choice in [1, 3]:
+        setup_directory_structure()
+
+    if choice in [2, 3]:
+        setup_certificates()
 
     console.print("\n[bold green]Setup complete![/bold green]")
 
