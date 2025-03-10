@@ -12,7 +12,7 @@ NOTES.md
 .vscode
 .warpsign/
 *.toml
-/bulid/
+/build/
 /dist/
 /egg
 /warpsign.egg-info
