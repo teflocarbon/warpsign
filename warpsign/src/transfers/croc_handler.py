@@ -96,7 +96,7 @@ class CrocHandler:
         self.env["CROC_SECRET"] = self.code
 
         # Build the command
-        command = ["croc", "--yes", "receive", self.code]
+        command = ["croc", "--yes"]
         if output_dir:
             output_dir.mkdir(parents=True, exist_ok=True)
             command.extend(["--out", str(output_dir)])
