@@ -5,7 +5,7 @@ Constants used in the CLI interface of WarpSign.
 from rich.text import Text
 
 # Define version
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 
 
 # Banner ASCII art
