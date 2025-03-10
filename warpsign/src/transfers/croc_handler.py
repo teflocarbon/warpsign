@@ -20,7 +20,7 @@ class CrocHandler:
             code: Optional croc code to use. If None, a new code will be generated.
         """
         # Generate a memorable code that's easy to type, or use provided code
-        self.code = code or f"warpsign-{uuid.uuid4().hex[:8]}"
+        self.code = code or f"warpsign-{uuid.uuid4().hex}"
         self.process = None
         self.env = None
 
@@ -104,9 +104,6 @@ class CrocHandler:
         console.print(f"[dim]Running: {' '.join(command)}[/]")
         console.print("[green]Waiting for file transfer - logs will appear below:[/]")
 
-        # Create a temp file to store output for parsing
-        output_file = Path(f"/tmp/croc-{self.code}-output.txt")
-
         try:
             # Start the process and wait for it to complete
             console.print("[bold yellow]Waiting for CI to upload the signed IPA...[/]")
@@ -114,11 +111,6 @@ class CrocHandler:
             result = subprocess.run(
                 command, env=self.env, text=True, capture_output=True
             )
-
-            # Write output to a file for debugging
-            with open(output_file, "w") as f:
-                f.write(result.stdout)
-                f.write(result.stderr)
 
             # Check if the process succeeded
             if result.returncode != 0:
