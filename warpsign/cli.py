@@ -101,6 +101,14 @@ def main():
         help="Certificate type to use for signing",
     )
 
+    # Setup command
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Setup WarpSign configuration",
+        formatter_class=WarpSignHelpFormatter,
+        description="Interactive wizard to set up WarpSign directories and configuration.",
+    )
+
     args = parser.parse_args()
 
     if args.command == "sign":
@@ -111,6 +119,10 @@ def main():
         from warpsign.commands.sign_ci import run_sign_ci_command
 
         return run_sign_ci_command(args)
+    elif args.command == "setup":
+        from warpsign.commands.setup import run_setup_command
+
+        return run_setup_command(args)
     else:
         parser.print_help()
         return 1
