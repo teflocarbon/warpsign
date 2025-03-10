@@ -9,7 +9,7 @@ def create_parser():
     """Create and return an argument parser with signing arguments."""
     parser = argparse.ArgumentParser(
         prog="warpsign",
-        description="WarpSign: A tool for signing and managing iOS applications",
+        description="Sign the proper way™",
         formatter_class=RawDescriptionRichHelpFormatter,
     )
     add_signing_arguments(parser)
