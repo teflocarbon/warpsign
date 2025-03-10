@@ -2,7 +2,6 @@ import sys
 import base64
 from pathlib import Path
 from typing import Dict, Tuple, Optional
-import toml
 import requests
 import argparse
 import os
@@ -12,19 +11,9 @@ from warpsign.logger import get_console
 from warpsign.src.apple.authentication_helper import authenticate_with_apple
 from warpsign.src.ci.github import GitHubHandler
 from warpsign.src.ci.litterbox import LitterboxUploader
+from warpsign.src.utils.config_loader import load_config
 
 console = get_console()
-
-
-def load_config() -> dict:
-    """Load and validate the configuration file."""
-    config_path = Path.home() / ".warpsign" / "config.toml"
-    if not config_path.exists():
-        console.print(
-            f"[red]Error: config.toml not found. Have you checked if '{config_path}' exists?[/]"
-        )
-        sys.exit(1)
-    return toml.load(config_path)
 
 
 def read_cert_and_password(cert_path: Path) -> Tuple[str, str]:
@@ -219,8 +208,17 @@ def main(parsed_args=None) -> int:
 
     try:
         # Load configuration and initialize GitHub handler
-        config = load_config()
-        github_config = config["github"]
+        config = load_config()  # Using our centralized config loader
+        github_config = config.get("github", {})
+
+        if not github_config or not all(
+            k in github_config for k in ["repo_owner", "repo_name", "access_token"]
+        ):
+            console.print(
+                "[red]Error: GitHub configuration missing or incomplete in config.toml[/]"
+            )
+            return 1
+
         gh_secrets = GitHubHandler(
             github_config["repo_owner"],
             github_config["repo_name"],

@@ -9,12 +9,9 @@ import getpass
 import http.cookiejar as cookielib
 import re
 from typing import Optional
-from dotenv import load_dotenv
-from datetime import datetime, timezone  # Add this import
+from datetime import datetime, timezone
 from warpsign.logger import get_console
-
-# Load environment variables from .env file
-load_dotenv()
+from warpsign.src.utils.config_loader import get_session_dir, get_apple_credentials
 
 console = get_console()
 
@@ -41,13 +38,9 @@ class AppleDeveloperAuth:
         self.email = None  # Store email for session management
         self.session_data = {}  # Initialize empty session data
 
-        # Check for custom session directory from environment
-        custom_session_dir = os.getenv("WARPSIGN_SESSION_DIR")
-        if custom_session_dir:
-            self._cookie_directory = Path(custom_session_dir)
-            console.print(f"Using custom session directory: {custom_session_dir}")
-        else:
-            self._cookie_directory = Path.home() / ".warpsign" / "sessions"
+        # Check for custom session directory from environment or config
+        session_dir = get_session_dir()
+        self._cookie_directory = session_dir
 
         self._cookie_directory.mkdir(parents=True, exist_ok=True)
 
@@ -497,9 +490,8 @@ class AppleDeveloperAuth:
 
 
 def main():
-    email = os.getenv("APPLE_ID")
-    password = os.getenv("APPLE_PASSWORD")
-    custom_session = os.getenv("WARPSIGN_SESSION_DIR")
+    email, password = get_apple_credentials()
+    custom_session = get_session_dir()
 
     if not email:
         console.print("[red]Error: APPLE_ID environment variable is not set[/]")

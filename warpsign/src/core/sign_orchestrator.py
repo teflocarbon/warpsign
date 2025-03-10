@@ -8,10 +8,8 @@ from rich.syntax import Syntax
 import subprocess
 import shutil
 import json
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
+import plistlib
+from warpsign.src.utils.config_loader import get_apple_credentials, get_session_dir
 
 from warpsign.src.ipa.ipa_inspector import IPAInspector
 from warpsign.src.core.bundle_mapper import BundleMapping, IDType
@@ -23,7 +21,6 @@ from warpsign.src.core.cert_handler import CertHandler
 from warpsign.src.core.verification import SigningVerifier
 from warpsign.src.core.verifier import AppVerifier
 from warpsign.src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
-import plistlib
 from warpsign.logger import get_console
 
 
@@ -70,13 +67,18 @@ class SignOrchestrator:
         """Set up authentication using either session or password."""
         self.auth = AppleDeveloperAuth()
 
-        # Get authentication credentials
-        apple_id = os.getenv("APPLE_ID")
-        apple_password = os.getenv("APPLE_PASSWORD")
-        session_dir = os.getenv("WARPSIGN_SESSION_DIR")
+        # Get authentication credentials from config
+        try:
+            credentials = get_apple_credentials()
+            apple_id = credentials["apple_id"]
+            apple_password = credentials["apple_password"]
+            session_dir = get_session_dir()
+        except ValueError as e:
+            self.console.print(f"[red]Error: {e}")
+            sys.exit(1)
 
         if not apple_id:
-            self.console.print("[red]Error: APPLE_ID environment variable is not set")
+            self.console.print("[red]Error: apple_id not set in config")
             sys.exit(1)
 
         # Try loading existing session first if session directory is specified
@@ -91,13 +93,6 @@ class SignOrchestrator:
                     return
             except Exception as e:
                 self.console.print(f"[yellow]Failed to load session: {e}")
-
-        # Fall back to password auth if no valid session
-        if not apple_password:
-            self.console.print(
-                "[red]Error: No valid session and APPLE_PASSWORD not set"
-            )
-            sys.exit(1)
 
         # Authenticate with password
         if not self.auth.authenticate(apple_id, apple_password):
