@@ -5,3 +5,5 @@ srp
 lief
 pillow
 toml
+flask
+jinja2
