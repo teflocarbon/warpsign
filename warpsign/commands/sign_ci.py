@@ -154,8 +154,12 @@ def handle_workflow_execution(
     workflow_inputs: Dict[str, str],
     github_config: dict,
     original_ipa_path: Path,
-) -> None:
-    """Handle workflow execution and result processing."""
+) -> Optional[str]:
+    """Handle workflow execution and result processing.
+
+    Returns:
+        Optional[str]: The run ID if workflow completes successfully, None otherwise.
+    """
     run_uuid = gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
     console.print("[green]Successfully triggered signing workflow![/]")
     console.print("Waiting for workflow to complete...")
@@ -163,9 +167,10 @@ def handle_workflow_execution(
     try:
         console.print("\n[bold blue]Monitoring workflow execution...[/]")
         run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
+        run_id = run["id"]
 
         console.print("\n[bold blue]Fetching workflow outputs...[/]")
-        outputs = gh_secrets.get_workflow_outputs(run["id"])
+        outputs = gh_secrets.get_workflow_outputs(run_id)
 
         if "url" in outputs and outputs["url"]:
             console.print(f"\n[green]✓ Signing completed successfully![/]")
@@ -179,8 +184,10 @@ def handle_workflow_execution(
                 "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
             )
             console.print(
-                f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run['id']}"
+                f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
             )
+
+        return run_id
 
     except TimeoutError:
         console.print("[red]❌ Workflow timed out![/]")
@@ -249,11 +256,11 @@ def main(parsed_args=None) -> int:
             "apple_id": apple_id,
         }
 
-        handle_workflow_execution(
+        run_id = handle_workflow_execution(
             gh_secrets, workflow_inputs, github_config, Path(args.ipa_path)
         )
         console.print(
-            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions"
+            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
         )
         return 0
 
