@@ -27,14 +27,15 @@ def get_apple_credentials() -> Dict[str, Optional[str]]:
     apple_config = config.get("apple", {})
 
     credentials = {
-        "apple_id": apple_config.get("apple_id"),
-        "apple_password": apple_config.get("apple_password"),
+        "apple_id": apple_config.get("apple_id") or os.environ.get("APPLE_ID"),
+        "apple_password": apple_config.get("apple_password")
+        or os.environ.get("APPLE_PASSWORD"),
     }
 
     # Validate that at least apple_id is present
     if not credentials["apple_id"]:
         raise ValueError(
-            f"Apple ID not found in config. Please add [apple] section with apple_id to {get_config_path()}"
+            f"Apple ID not found in config or environment. Please add [apple] section with apple_id to {get_config_path()} or set APPLE_ID environment variable"
         )
 
     return credentials
