@@ -8,23 +8,20 @@ from rich.syntax import Syntax
 import subprocess
 import shutil
 import json
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-from src.ipa.ipa_inspector import IPAInspector
-from src.core.bundle_mapper import BundleMapping, IDType
-from src.ipa.entitlements_processor import EntitlementsProcessor
-from src.ipa.app_patcher import AppPatcher, PatchingOptions
-from src.apple.developer_portal_api import DeveloperPortalAPI
-from src.apple.apple_account_login import AppleDeveloperAuth
-from src.core.cert_handler import CertHandler
-from src.core.verification import SigningVerifier
-from src.core.verifier import AppVerifier
-from src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
 import plistlib
-from logger import get_console
+
+
+from warpsign.src.ipa.ipa_inspector import IPAInspector
+from warpsign.src.ipa.entitlements_processor import EntitlementsProcessor
+from warpsign.src.ipa.app_patcher import AppPatcher, PatchingOptions
+from warpsign.src.apple.developer_portal_api import DeveloperPortalAPI
+from warpsign.src.apple.apple_account_login import AppleDeveloperAuth
+from warpsign.src.core.cert_handler import CertHandler
+from warpsign.src.core.verifier import AppVerifier
+from warpsign.src.core.bundle_mapper import BundleMapping, IDType
+from warpsign.src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
+from warpsign.src.utils.config_loader import get_apple_credentials, get_session_dir
+from warpsign.logger import get_console
 
 
 class SignOrchestrator:
@@ -70,13 +67,18 @@ class SignOrchestrator:
         """Set up authentication using either session or password."""
         self.auth = AppleDeveloperAuth()
 
-        # Get authentication credentials
-        apple_id = os.getenv("APPLE_ID")
-        apple_password = os.getenv("APPLE_PASSWORD")
-        session_dir = os.getenv("WARPSIGN_SESSION_DIR")
+        # Get authentication credentials from config
+        try:
+            credentials = get_apple_credentials()
+            apple_id = credentials["apple_id"]
+            apple_password = credentials["apple_password"]
+            session_dir = get_session_dir()
+        except ValueError as e:
+            self.console.print(f"[red]Error: {e}")
+            sys.exit(1)
 
         if not apple_id:
-            self.console.print("[red]Error: APPLE_ID environment variable is not set")
+            self.console.print("[red]Error: apple_id not set in config")
             sys.exit(1)
 
         # Try loading existing session first if session directory is specified
@@ -91,13 +93,6 @@ class SignOrchestrator:
                     return
             except Exception as e:
                 self.console.print(f"[yellow]Failed to load session: {e}")
-
-        # Fall back to password auth if no valid session
-        if not apple_password:
-            self.console.print(
-                "[red]Error: No valid session and APPLE_PASSWORD not set"
-            )
-            sys.exit(1)
 
         # Authenticate with password
         if not self.auth.authenticate(apple_id, apple_password):

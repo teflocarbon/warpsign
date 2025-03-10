@@ -1,7 +1,9 @@
 rich
+rich-argparse
 requests
-python-dotenv
 srp
 lief
 pillow
 toml
+flask
+jinja2

@@ -2,9 +2,9 @@ from rich.table import Table
 import os
 from apple.developer_portal_api import DeveloperPortalAPI
 from apple.apple_account_login import AppleDeveloperAuth
-from dotenv import load_dotenv
 import random
-from logger import get_console
+from warpsign.logger import get_console
+from warpsign.src.utils.config_loader import get_apple_credentials
 
 console = get_console()
 
@@ -13,18 +13,18 @@ def test_api():
     """Test the Developer Portal API implementation"""
     console.print("[yellow]Starting Developer Portal API test[/]")
 
-    # Get credentials from environment or .env file
+    # Get credentials from config
     try:
-        load_dotenv()
-    except ImportError:
-        pass
-
-    email = os.getenv("APPLE_ID")
-    password = os.getenv("APPLE_PASSWORD")
+        credentials = get_apple_credentials()
+        email = credentials["apple_id"]
+        password = credentials["apple_password"]
+    except ValueError as e:
+        console.print(f"[red]{e}")
+        return
 
     if not email or not password:
         console.print(
-            "[red]Please set APPLE_ID and APPLE_PASSWORD environment variables or in .env file"
+            "[red]Please set apple_id and apple_password in ~/.warpsign/config.toml"
         )
         return
 

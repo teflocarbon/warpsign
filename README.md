@@ -3,7 +3,7 @@
 A lightning-fast iOS app signing solution that leverages the Apple Developer Portal API for seamless entitlements management and code signing.
 
 ![Status](https://img.shields.io/badge/status-beta-yellow)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 ## 📋 Table of Contents
@@ -38,7 +38,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 - **Paid Apple Developer Account**. Free accounts will never be supported.
 - Apple Developer or Distribution Certificate (generated via Developer Portal)
-- Python 3.8 or higher
+- Python 3.10 or higher
 - macOS (Apple signing requirements)
 
 > [!WARNING]
@@ -60,64 +60,67 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 ### CI Signing
 
 - Any operating system (Windows, macOS, or Linux)
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Active internet connection
 - GitHub account with repository access
 
 > [!IMPORTANT]
 > CI signing is limited to files with a maximum of 1GB. At this time, they're also unable to use the `--icon` option.
 
-## 📦 Dependencies
+## 📦 Installation
 
-Install required packages:
+### Install pipx
 
-Download all requirements using the requirements.txt file.
+First, install pipx which is used to install and run Python applications in isolated environments:
+
+See the [pipx installation guide](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx) here.
+
+### Install or Update WarpSign
 
 ```bash
-pip install -r requirements.txt
+pipx install --force https://github.com/teflocarbon/warpsign/archive/main.zip
 ```
 
-## 📝 Certificate Setup
+For automated environments or advanced users:
 
+```bash
+pip install --force-reinstall https://github.com/teflocarbon/warpsign/archive/main.zip
+```
 
-> [!NOTE]
-> #### If you don't have a certificate.
-> - If you're using macOS, follow this [guide from Apple](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates/)
-> - If you're using Windows. You can follow this [guide](https://mzansibytes.com/2021/08/28/create-apple-developer-certificates-on-windows/)
-> - If you're using Linux. You can follow this [guide](https://gist.github.com/boodle/77436b2d9facb8e938ad)
+## 🔐 Setup Wizard
+
+The easiest way to set up WarpSign is to use the built-in setup wizard:
+
+```bash
+warpsign setup
+```
+
+This interactive wizard will guide you through:
+
+- Uploading your development and distribution certificates
+- Setting up your Apple ID credentials
+- Configuring GitHub CI settings (if needed)
+- Creating your configuration file
+
+## 📝 Advanced Configuration
+
+For advanced users who prefer manual configuration:
+
+1. WarpSign stores configuration in `~/.warpsign/` directory
+2. Sample configuration file is available at `warpsign/src/constants/config.toml.sample`
+3. Certificates should be placed in:
+   ```
+   ~/.warpsign/certificates/
+   ├── development/
+   │   ├── cert.p12
+   │   └── cert_pass.txt
+   └── distribution/
+       ├── cert.p12
+       └── cert_pass.txt
+   ```
 
 > [!WARNING]
 > You must have a password with your certificate.
-
-This part assume that you have a working Apple Development and Apple Distribution certificate.
-
-1. Create the following directory structure in your project root:
-
-```
-certificates/
-├── development/
-│   ├── cert.p12
-│   └── cert_pass.txt
-└── distribution/
-    ├── cert.p12
-    └── cert_pass.txt
-```
-
-2. Add your certificates and passwords:
-   - Place your certificates as `cert.p12` in the respective folders
-   - Create `cert_pass.txt` with your certificate password
-   - Use development or distribution certificates from Apple Developer Portal
-
-## 🔐 Environment Setup
-
-Create a `.env` file in the project root:
-
-```env
-APPLE_ID=your.apple.id@example.com
-APPLE_PASSWORD=your_apple_password
-```
-
-These credentials are used for Apple Developer Portal authentication.
 
 ## 🔑 Session Management
 
@@ -132,13 +135,13 @@ rm -rf ~/.warpsign/sessions
 Get help and see available options:
 
 ```bash
-python3 sign.py --help
+warpsign --help
 ```
 
 Basic signing:
 
 ```bash
-python3 sign.py my-app.ipa
+warpsign sign my-app.ipa
 ```
 
 ### CI Usage
@@ -148,53 +151,45 @@ python3 sign.py my-app.ipa
 > [!WARNING]
 > It's recommended to use a template rather than a fork, since a fork must be public and cannot be made private. The logs will output things like your Team ID and your name as an Apple Developer.
 
-2. Copy `config.toml.sample` to `config.toml`:
+2. Set up your CI configuration using the setup wizard:
 
 ```bash
-cp config.toml.sample config.toml
+warpsign setup --ci
 ```
 
-3. Edit `config.toml` with your GitHub token and settings:
+3. Run the CI signing:
 
-```toml
-github_token = "your-github-token"
-repository = "your-username/your-repo"
-workflow = "sign.yml"
+```bash
+warpsign sign-ci my-app.ipa
 ```
 
 > [!IMPORTANT]
 > It's recommended to use a `Fine-grained personal access token` from GitHub. You only need to enable Read/write access on Secret and Actions. If you don't know how to create a token, please read the [GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
-4. Run the CI signing script:
-
-```bash
-python3 sign-ci.py my-app.ipa
-```
-
 ## Examples
 
-Show all available options
+Show all available options:
 
 ```bash
-python3 sign.py -h
+warpsign sign --help
 ```
 
 Enable debug mode (requires development certificate):
 
 ```bash
-python3 sign.py my-app.ipa --patch-debug
+warpsign sign my-app.ipa --patch-debug
 ```
 
 Force original bundle ID for push notifications (requires distribution certificate):
 
 ```bash
-python3 sign.py my-app.ipa --force-original-id
+warpsign sign my-app.ipa --force-original-id
 ```
 
 Enable file sharing and promotion support:
 
 ```bash
-python3 sign.py my-app.ipa --patch-file-sharing --patch-promotion
+warpsign sign my-app.ipa --patch-file-sharing --patch-promotion
 ```
 
 ## 🚨 Common Issues

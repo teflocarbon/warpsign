@@ -1,0 +1,8 @@
+[github]
+repo_owner = "XXXX"
+repo_name = "XXXX"
+access_token = "XXXX"
+
+[apple]
+apple_id = "changeme@apple.com" # Required
+apple_password = "changeme" # Optional

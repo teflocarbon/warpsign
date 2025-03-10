@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warpsign"
+version = "0.1.0"
+description = "A tool for signing and managing iOS applications"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+dependencies = [
+    "rich",
+    "requests",
+    "srp",
+    "lief",
+    "pillow",
+    "toml",
+    "rich-argparse",
+    "flask",
+    "jinja2",
+]
+
+[project.scripts]
+warpsign = "warpsign.cli:main"

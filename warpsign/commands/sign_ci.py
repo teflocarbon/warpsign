@@ -2,25 +2,18 @@ import sys
 import base64
 from pathlib import Path
 from typing import Dict, Tuple, Optional
-import toml
 import requests
+import argparse
+import os
 
-from arguments import create_parser
-from logger import get_console
-from src.apple.authentication_helper import authenticate_with_apple
-from src.ci.github import GitHubHandler
-from src.ci.litterbox import LitterboxUploader
+from warpsign.arguments import add_signing_arguments, create_patching_options
+from warpsign.logger import get_console
+from warpsign.src.apple.authentication_helper import authenticate_with_apple
+from warpsign.src.ci.github import GitHubHandler
+from warpsign.src.ci.litterbox import LitterboxUploader
+from warpsign.src.utils.config_loader import load_config
 
 console = get_console()
-
-
-def load_config() -> dict:
-    """Load and validate the configuration file."""
-    config_path = Path(__file__).parent / "config.toml"
-    if not config_path.exists():
-        console.print("[red]Error: config.toml not found[/]")
-        sys.exit(1)
-    return toml.load(config_path)
 
 
 def read_cert_and_password(cert_path: Path) -> Tuple[str, str]:
@@ -35,19 +28,6 @@ def read_cert_and_password(cert_path: Path) -> Tuple[str, str]:
     password = pass_file.read_text().strip()
 
     return cert_content, password
-
-
-def create_ci_parser():
-    """Create argument parser with CI-specific options."""
-    parser = create_parser()
-    parser.add_argument(
-        "--certificate",
-        "-c",
-        choices=["development", "distribution"],
-        default="development",
-        help="Certificate type to use for signing [default: development]",
-    )
-    return parser
 
 
 def download_and_rename_ipa(signed_url: str, original_path: Path) -> Path:
@@ -105,11 +85,38 @@ def handle_authentication() -> Tuple[str, str, str, str]:
     return cookie_content, session_content, auth_id, auth.email
 
 
+def setup_certificate_config() -> Path:
+    """Setup certificate configuration."""
+    cert_dir = os.getenv("WARPSIGN_CERT_DIR")
+    return Path(cert_dir) if cert_dir else Path.home() / ".warpsign" / "certificates"
+
+
 def upload_certificates(gh_secrets: GitHubHandler, config: dict) -> None:
     """Upload development and distribution certificates to GitHub secrets."""
-    cert_config = config["certificates"]
-    dev_path = Path(cert_config["development_path"])
-    dist_path = Path(cert_config["distribution_path"])
+    cert_dir_path = setup_certificate_config()
+
+    # Ensure certificate directories exist
+    dev_path = cert_dir_path / "development"
+    dist_path = cert_dir_path / "distribution"
+
+    # Check if certificate files exist
+    if (
+        not (dev_path / "cert.p12").exists()
+        or not (dev_path / "cert_pass.txt").exists()
+    ):
+        console.print(
+            f"[red]Error: Development certificate files not found in {dev_path}[/]"
+        )
+        sys.exit(1)
+
+    if (
+        not (dist_path / "cert.p12").exists()
+        or not (dist_path / "cert_pass.txt").exists()
+    ):
+        console.print(
+            f"[red]Error: Distribution certificate files not found in {dist_path}[/]"
+        )
+        sys.exit(1)
 
     # Upload development certificate
     dev_cert, dev_pass = read_cert_and_password(dev_path)
@@ -126,7 +133,9 @@ def upload_certificates(gh_secrets: GitHubHandler, config: dict) -> None:
 
 def build_signing_args(args) -> str:
     """Build signing arguments string from parsed arguments."""
-    skip_keys = {"ipa_path", "certificate", "encode_ids", "patch_ids"}
+    # We need to skip some keys that are used for other purposes. Some are
+    # automatically included whilst others are internal only.
+    skip_keys = {"ipa_path", "certificate", "encode_ids", "patch_ids", "command"}
     signing_args = []
 
     for key, value in vars(args).items():
@@ -145,8 +154,12 @@ def handle_workflow_execution(
     workflow_inputs: Dict[str, str],
     github_config: dict,
     original_ipa_path: Path,
-) -> None:
-    """Handle workflow execution and result processing."""
+) -> Optional[str]:
+    """Handle workflow execution and result processing.
+
+    Returns:
+        Optional[str]: The run ID if workflow completes successfully, None otherwise.
+    """
     run_uuid = gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
     console.print("[green]Successfully triggered signing workflow![/]")
     console.print("Waiting for workflow to complete...")
@@ -154,9 +167,10 @@ def handle_workflow_execution(
     try:
         console.print("\n[bold blue]Monitoring workflow execution...[/]")
         run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
+        run_id = run["id"]
 
         console.print("\n[bold blue]Fetching workflow outputs...[/]")
-        outputs = gh_secrets.get_workflow_outputs(run["id"])
+        outputs = gh_secrets.get_workflow_outputs(run_id)
 
         if "url" in outputs and outputs["url"]:
             console.print(f"\n[green]✓ Signing completed successfully![/]")
@@ -170,8 +184,10 @@ def handle_workflow_execution(
                 "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
             )
             console.print(
-                f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run['id']}"
+                f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
             )
+
+        return run_id
 
     except TimeoutError:
         console.print("[red]❌ Workflow timed out![/]")
@@ -182,22 +198,34 @@ def handle_workflow_execution(
         sys.exit(1)
 
 
-def main():
-    """Main execution flow."""
+def main(parsed_args=None) -> int:
+    """Main CI signing function that does the actual work.
+
+    Args:
+        parsed_args: Optional pre-parsed arguments (from CLI)
+    """
     console.print("[bold blue]WarpSign CI[/]")
 
-    # Parse arguments
-    parser = create_ci_parser()
-    args = parser.parse_args()
+    # Args are provided from CLI. We don't support running this function directly anymore.
+    args = parsed_args
 
     if args.icon:
         console.print("[red]Error: --icon is not supported with CI at the moment[/]")
-        sys.exit(1)
+        return 1
 
     try:
         # Load configuration and initialize GitHub handler
-        config = load_config()
-        github_config = config["github"]
+        config = load_config()  # Using our centralized config loader
+        github_config = config.get("github", {})
+
+        if not github_config or not all(
+            k in github_config for k in ["repo_owner", "repo_name", "access_token"]
+        ):
+            console.print(
+                "[red]Error: GitHub configuration missing or incomplete in config.toml[/]"
+            )
+            return 1
+
         gh_secrets = GitHubHandler(
             github_config["repo_owner"],
             github_config["repo_name"],
@@ -228,17 +256,27 @@ def main():
             "apple_id": apple_id,
         }
 
-        handle_workflow_execution(
+        run_id = handle_workflow_execution(
             gh_secrets, workflow_inputs, github_config, Path(args.ipa_path)
         )
         console.print(
-            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions"
+            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
         )
+        return 0
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/]")
-        sys.exit(1)
+        return 1
 
 
+def run_sign_ci_command(args):
+    """Entry point for the sign-ci command from CLI"""
+    # Just pass the parsed args to main
+    return main(parsed_args=args)
+
+
+# For direct script execution - route through the CLI
 if __name__ == "__main__":
-    main()
+    from warpsign.cli import main as cli_main
+
+    sys.exit(cli_main())

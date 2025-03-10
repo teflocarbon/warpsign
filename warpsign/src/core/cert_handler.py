@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, List
 import subprocess
-from logger import get_console
+from warpsign.logger import get_console
 import random
 import string
 import re
@@ -16,7 +16,12 @@ class CertHandler:
         self.console = get_console()
 
         # Get certificate directory from environment or parameter, ensure it's a Path
-        self.cert_dir = Path(cert_dir or os.getenv("WARPSIGN_CERT_DIR", "certificates"))
+        self.cert_dir = Path(
+            cert_dir
+            or os.getenv(
+                "WARPSIGN_CERT_DIR", Path.home() / ".warpsign" / "certificates"
+            )
+        )
 
         # Get certificate type from environment or parameter
         self.cert_type = cert_type or os.getenv("WARPSIGN_CERT_TYPE", "development")

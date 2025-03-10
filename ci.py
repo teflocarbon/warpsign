@@ -2,10 +2,10 @@ from pathlib import Path
 import sys
 import os
 
-from src.apple.apple_account_login import AppleDeveloperAuth
-from src.core.sign_orchestrator import SignOrchestrator
-from arguments import create_parser, create_patching_options
-from logger import get_console
+from warpsign.src.apple.apple_account_login import AppleDeveloperAuth
+from warpsign.src.core.sign_orchestrator import SignOrchestrator
+from warpsign.arguments import create_parser, create_patching_options
+from warpsign.logger import get_console
 
 REQUIRED_ENV_VARS = [
     "WARPSIGN_SESSION_DIR",

@@ -9,7 +9,10 @@ from rich.json import JSON
 # Add the parent directory of 'src' to the system path.. kinda hacky but it works
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.apple.capability_mappings import CAPABILITY_MAPPING, SPECIAL_CAPABILITIES
+from warpsign.src.constants.capability_mappings import (
+    CAPABILITY_MAPPING,
+    SPECIAL_CAPABILITIES,
+)
 
 
 def dump_prov(prov_file: Path) -> dict:

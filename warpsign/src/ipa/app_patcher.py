@@ -8,10 +8,10 @@ from collections import OrderedDict
 import lief
 from lief import MachO
 from enum import Enum, auto
-from logger import get_console
+from warpsign.logger import get_console
 
-from src.utils.icon_handler import IconHandler
-from src.core.bundle_mapper import BundleMapping, IDType
+from warpsign.src.utils.icon_handler import IconHandler
+from warpsign.src.core.bundle_mapper import BundleMapping, IDType
 
 
 class StatusBarStyle(Enum):

@@ -4,7 +4,7 @@ from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 from rich.table import Table
 import os
-from logger import get_console
+from warpsign.logger import get_console
 
 console = get_console()
 

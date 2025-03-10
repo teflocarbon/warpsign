@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Set
 import json
-from logger import get_console
+from warpsign.logger import get_console
 
 
 @dataclass
