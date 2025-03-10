@@ -40,9 +40,18 @@ def read_cert_and_password(cert_path: Path) -> Tuple[str, str]:
 def download_and_rename_ipa(signed_url: str, original_path: Path) -> Path:
     """Download the signed IPA and rename it with -signed suffix."""
     console.print("\nDownloading signed IPA...")
-    signed_path = (
-        original_path.parent / f"{original_path.stem}-signed{original_path.suffix}"
-    )
+
+    # Save directly to current directory
+    current_dir = Path.cwd()
+    signed_path = current_dir / f"{original_path.stem}-signed{original_path.suffix}"
+
+    # If file already exists in current directory, append a timestamp
+    if signed_path.exists():
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        signed_path = (
+            current_dir
+            / f"{original_path.stem}-signed-{timestamp}{original_path.suffix}"
+        )
 
     response = requests.get(signed_url, stream=True)
     response.raise_for_status()
@@ -249,12 +258,19 @@ def handle_workflow_execution(
                         signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
 
                         # Rename the file to match our naming convention
-                        new_path = (
-                            temp_dir
-                            / f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
+                        new_filename = (
+                            f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
                         )
-                        signed_ipa_path.rename(new_path)
-                        signed_ipa_path = new_path
+                        temp_new_path = temp_dir / new_filename
+                        signed_ipa_path.rename(temp_new_path)
+
+                        # Move the file to the user's current directory
+                        current_dir = Path.cwd()
+                        final_path = current_dir / new_filename
+
+                        # Copy to current directory, overwriting if exists
+                        shutil.move(temp_new_path, final_path)
+                        signed_ipa_path = final_path
 
                         console.print(
                             f"[bold green]✓ Successfully received signed IPA: {signed_ipa_path}[/]"
@@ -273,69 +289,42 @@ def handle_workflow_execution(
             console.print("\n[bold green]✓ Workflow completed successfully![/]")
 
             # If we're using croc and we already have the signed IPA, use it
-            if use_croc and signed_ipa_path:
-                console.print(
-                    f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_ipa_path}"
-                )
-                return run_id
-
-            # Otherwise, get the URL from the workflow outputs
-            console.print("\n[bold blue]Fetching workflow outputs...[/]")
-            outputs = gh_secrets.get_workflow_outputs(run_id)
-
-            if "url" in outputs and outputs["url"]:
-                url = outputs["url"]
-
-                # Check if it's a croc URL
-                if url.startswith("croc://"):
-                    # Try again to receive with croc
-                    try:
-                        croc_code = url[7:]  # Remove "croc://" prefix
-                        temp_dir = (
-                            Path(os.path.expanduser("~")) / ".warpsign" / "downloads"
-                        )
-                        temp_dir.mkdir(parents=True, exist_ok=True)
-
-                        console.print(
-                            f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
-                        )
-                        croc_receiver = CrocHandler(code=croc_code)
-                        signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
-
-                        # Rename the file to match our naming convention
-                        new_path = (
-                            temp_dir
-                            / f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
-                        )
-                        signed_ipa_path.rename(new_path)
-                        signed_ipa_path = new_path
-
-                        console.print(
-                            f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_ipa_path}"
-                        )
-                    except Exception as e:
-                        console.print(f"[bold red]Error receiving file: {str(e)}[/]")
-                        console.print(
-                            f"[yellow]Please use the code '{croc_code}' to receive the file manually with croc[/]"
-                        )
+            if use_croc:
+                if signed_ipa_path:
+                    console.print(
+                        f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_ipa_path}"
+                    )
                 else:
-                    # Regular HTTP URL
+                    # If we somehow didn't receive the file via croc during the workflow,
+                    # provide instructions to manually retrieve it
+                    console.print(
+                        f"[yellow]⚠ No file received yet. Try receiving manually with:[/] croc receive {croc_code}"
+                    )
+                    current_dir = Path.cwd()
+                    console.print(
+                        f"[dim]Recommended output directory: {current_dir}[/]"
+                    )
+            else:
+                # For non-croc workflows, get the URL from workflow outputs
+                console.print("\n[bold blue]Fetching workflow outputs...[/]")
+                outputs = gh_secrets.get_workflow_outputs(run_id)
+
+                if "url" in outputs and outputs["url"]:
+                    url = outputs["url"]
                     console.print(f"[green]Signed IPA available at:[/] {url}")
+
+                    # For HTTP URLs, just download directly to current directory
                     signed_path = download_and_rename_ipa(url, original_ipa_path)
                     console.print(
                         f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
                     )
-            else:
-                console.print(
-                    "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
-                )
-                if use_croc and croc_code:
+                else:
                     console.print(
-                        f"[yellow]Try receiving the file manually with:[/] croc --code {croc_code} receive"
+                        "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
                     )
-                console.print(
-                    f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
-                )
+                    console.print(
+                        f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
+                    )
 
             return run_id
 
