@@ -6,3 +6,7 @@ access_token = "XXXX"
 [certificates]
 development_path = "certificates/development"
 distribution_path = "certificates/distribution"
+
+[apple]
+apple_id = "changeme@apple.com" # Required
+apple_password = "changeme" # Optional
