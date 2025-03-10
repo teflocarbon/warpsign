@@ -12,7 +12,6 @@ license = {file = "LICENSE"}
 dependencies = [
     "rich",
     "requests",
-    "python-dotenv",
     "srp",
     "lief",
     "pillow",
