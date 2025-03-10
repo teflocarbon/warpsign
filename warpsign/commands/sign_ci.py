@@ -178,28 +178,181 @@ def handle_workflow_execution(
 
     try:
         console.print("\n[bold blue]Monitoring workflow execution...[/]")
-        run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
-        run_id = run["id"]
 
-        console.print("\n[bold blue]Fetching workflow outputs...[/]")
-        outputs = gh_secrets.get_workflow_outputs(run_id)
+        # Create the receiver if using croc
+        croc_receiver = None
+        use_croc = workflow_inputs.get("use_croc") == "true"
+        croc_code = workflow_inputs.get("ipa_url") if use_croc else None
 
-        if "url" in outputs and outputs["url"]:
-            console.print(f"\n[green]✓ Signing completed successfully![/]")
-            console.print(f"[green]Signed IPA available at:[/] {outputs['url']}")
-            signed_path = download_and_rename_ipa(outputs["url"], original_ipa_path)
-            console.print(
-                f"\n[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
-            )
-        else:
-            console.print(
-                "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
-            )
+        # Variable to store the signed IPA path
+        signed_ipa_path = None
+
+        # Watch the workflow for status updates and to detect when we need to receive the file
+        run = None
+        previous_steps = None
+        while True:
+            run = gh_secrets.get_workflow_run("sign.yml", run_uuid)
+            if not run:
+                time.sleep(5)
+                continue
+
+            # Get the run ID
+            run_id = run["id"]
+
+            # Get the run status
+            status = run.get("status")
+            conclusion = run.get("conclusion")
+
+            # If the run is completed, break the loop
+            if status == "completed":
+                break
+
+            # Check for the "Upload IPA with croc" step if we're using croc
+            if use_croc:
+                current_steps = gh_secrets.get_workflow_steps(run_id)
+
+                # Find if "Upload IPA with croc" is currently running or just completed
+                upload_step_running = any(
+                    s["name"] == "Upload IPA with croc" and s["status"] == "in_progress"
+                    for s in current_steps
+                )
+
+                upload_step_completed = any(
+                    s["name"] == "Upload IPA with croc"
+                    and s["status"] == "completed"
+                    and s["conclusion"] == "success"
+                    for s in current_steps
+                )
+
+                # If the step is running or just completed and we haven't received the file yet
+                if (
+                    upload_step_running or upload_step_completed
+                ) and signed_ipa_path is None:
+                    console.print(
+                        "\n[bold yellow]Detected 'Upload IPA with croc' step - preparing to receive file[/]"
+                    )
+
+                    try:
+                        # Create a temporary directory for the downloaded IPA
+                        temp_dir = (
+                            Path(os.path.expanduser("~")) / ".warpsign" / "downloads"
+                        )
+                        temp_dir.mkdir(parents=True, exist_ok=True)
+
+                        # Create the receiver and receive the file
+                        croc_receiver = CrocHandler(code=croc_code)
+                        console.print(
+                            f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
+                        )
+
+                        # Receive the file
+                        signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
+
+                        # Rename the file to match our naming convention
+                        new_path = (
+                            temp_dir
+                            / f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
+                        )
+                        signed_ipa_path.rename(new_path)
+                        signed_ipa_path = new_path
+
+                        console.print(
+                            f"[bold green]✓ Successfully received signed IPA: {signed_ipa_path}[/]"
+                        )
+                    except Exception as e:
+                        console.print(f"[bold red]Error receiving file: {str(e)}[/]")
+                        console.print(
+                            "[yellow]Continuing to monitor workflow - will try again later[/]"
+                        )
+
+            # Wait before checking again
+            time.sleep(5)
+
+        # The run has completed, check the conclusion
+        if conclusion == "success":
+            console.print("\n[bold green]✓ Workflow completed successfully![/]")
+
+            # If we're using croc and we already have the signed IPA, use it
+            if use_croc and signed_ipa_path:
+                console.print(
+                    f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_ipa_path}"
+                )
+                return run_id
+
+            # Otherwise, get the URL from the workflow outputs
+            console.print("\n[bold blue]Fetching workflow outputs...[/]")
+            outputs = gh_secrets.get_workflow_outputs(run_id)
+
+            if "url" in outputs and outputs["url"]:
+                url = outputs["url"]
+
+                # Check if it's a croc URL
+                if url.startswith("croc://"):
+                    # Try again to receive with croc
+                    try:
+                        croc_code = url[7:]  # Remove "croc://" prefix
+                        temp_dir = (
+                            Path(os.path.expanduser("~")) / ".warpsign" / "downloads"
+                        )
+                        temp_dir.mkdir(parents=True, exist_ok=True)
+
+                        console.print(
+                            f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
+                        )
+                        croc_receiver = CrocHandler(code=croc_code)
+                        signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
+
+                        # Rename the file to match our naming convention
+                        new_path = (
+                            temp_dir
+                            / f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
+                        )
+                        signed_ipa_path.rename(new_path)
+                        signed_ipa_path = new_path
+
+                        console.print(
+                            f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_ipa_path}"
+                        )
+                    except Exception as e:
+                        console.print(f"[bold red]Error receiving file: {str(e)}[/]")
+                        console.print(
+                            f"[yellow]Please use the code '{croc_code}' to receive the file manually with croc[/]"
+                        )
+                else:
+                    # Regular HTTP URL
+                    console.print(f"[green]Signed IPA available at:[/] {url}")
+                    signed_path = download_and_rename_ipa(url, original_ipa_path)
+                    console.print(
+                        f"[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
+                    )
+            else:
+                console.print(
+                    "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
+                )
+                if use_croc and croc_code:
+                    console.print(
+                        f"[yellow]Try receiving the file manually with:[/] croc --code {croc_code} receive"
+                    )
+                console.print(
+                    f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
+                )
+
+            return run_id
+
+        elif conclusion == "failure":
+            console.print("[red]❌ Workflow failed![/]")
             console.print(
                 f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
             )
-
-        return run_id
+            sys.exit(1)
+        elif conclusion == "cancelled":
+            console.print("[yellow]⚠ Workflow was cancelled![/]")
+            sys.exit(1)
+        else:
+            console.print(
+                f"[yellow]⚠ Workflow ended with unexpected conclusion: {conclusion}[/]"
+            )
+            sys.exit(1)
 
     except TimeoutError:
         console.print("[red]❌ Workflow timed out![/]")
@@ -211,11 +364,7 @@ def handle_workflow_execution(
 
 
 def main(parsed_args=None) -> int:
-    """Main CI signing function that does the actual work.
-
-    Args:
-        parsed_args: Optional pre-parsed arguments (from CLI)
-    """
+    """Main CI signing function that does the actual work."""
     console.print("[bold blue]WarpSign CI[/]")
 
     # Args are provided from CLI. We don't support running this function directly anymore.
@@ -284,9 +433,8 @@ def main(parsed_args=None) -> int:
             ipa_url = uploader.upload(args.ipa_path)
             console.print("[green]IPA uploaded successfully to litterbox![/]")
 
-        # Prepare and execute workflow
+        # Prepare workflow inputs
         workflow_inputs = {
-            "run_uuid": str(uuid.uuid4()),
             "ipa_url": ipa_url,
             "cert_type": args.certificate,
             "signing_args": build_signing_args(args),
@@ -294,63 +442,18 @@ def main(parsed_args=None) -> int:
             "use_croc": str(use_croc).lower(),  # Send as "true" or "false" string
         }
 
-        # Trigger workflow
-        run_uuid = gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
-        console.print("[green]Successfully triggered signing workflow![/]")
-
-        # Direct URL to the workflow
-        workflow_url = f"https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_uuid}"
-        console.print(f"[blue]Workflow URL: {workflow_url}[/]")
-
-        # Now wait for workflow to complete
         try:
-            console.print("\n[bold blue]Monitoring workflow execution...[/]")
-            console.print(
-                "[yellow]If using croc, please keep this terminal open until files are transferred[/]"
-            )
-
-            run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
-            run_id = run["id"]
-
-            console.print("\n[bold blue]Fetching workflow outputs...[/]")
-            outputs = gh_secrets.get_workflow_outputs(run_id)
-
-            if "url" in outputs and outputs["url"]:
-                console.print(f"\n[green]✓ Signing completed successfully![/]")
-                console.print(f"[green]Signed IPA available at:[/] {outputs['url']}")
-                signed_path = download_and_rename_ipa(
-                    outputs["url"], Path(args.ipa_path)
-                )
-                console.print(
-                    f"\n[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
-                )
-            else:
-                console.print(
-                    "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
-                )
-                console.print(
-                    f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
-                )
-
-            console.print(
-                f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
+            # Execute workflow and handle results
+            handle_workflow_execution(
+                gh_secrets, workflow_inputs, github_config, Path(args.ipa_path)
             )
             return 0
-
-        except TimeoutError:
-            console.print("[red]❌ Workflow timed out![/]")
-            return 1
         except Exception as e:
-            console.print("[red]❌ Workflow failed![/]")
-            console.print(str(e))
+            console.print(f"[red]Error: {str(e)}[/]")
             return 1
-
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/]")
-        if use_croc and croc_handler:
-            croc_handler.stop()
         return 1
-
     finally:
         # Always stop croc when we're done
         if use_croc and croc_handler:
