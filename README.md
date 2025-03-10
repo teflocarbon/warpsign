@@ -73,13 +73,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 
 First, install pipx which is used to install and run Python applications in isolated environments:
 
-- **macOS**: `brew install pipx` or `python3 -m pip install --user pipx`
-- **Linux**: `python3 -m pip install --user pipx`
-- **Windows**: `python -m pip install --user pipx`
-
-After installing pipx, run: `python3 -m pipx ensurepath`
-
-For more details, see the [pipx installation guide](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx).
+See the [pipx installation guide](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx) here.
 
 ### Install or Update WarpSign
 
