@@ -1,5 +1,11 @@
 import sys
 import base64
+import subprocess
+import shutil
+import uuid
+import time
+import threading
+import queue
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 import requests
@@ -12,6 +18,7 @@ from warpsign.src.apple.authentication_helper import authenticate_with_apple
 from warpsign.src.ci.github import GitHubHandler
 from warpsign.src.ci.litterbox import LitterboxUploader
 from warpsign.src.utils.config_loader import load_config
+from warpsign.src.transfers.croc_handler import CrocHandler
 
 console = get_console()
 
@@ -149,6 +156,11 @@ def build_signing_args(args) -> str:
     return " ".join(signing_args)
 
 
+def is_croc_installed() -> bool:
+    """Check if croc is installed on the system."""
+    return CrocHandler.is_installed()
+
+
 def handle_workflow_execution(
     gh_secrets: GitHubHandler,
     workflow_inputs: Dict[str, str],
@@ -242,31 +254,107 @@ def main(parsed_args=None) -> int:
         # Upload certificates
         upload_certificates(gh_secrets, config)
 
-        # Upload IPA and prepare workflow
-        console.print("\nUploading IPA to litterbox...")
-        uploader = LitterboxUploader()
-        ipa_url = uploader.upload(args.ipa_path)
-        console.print("[green]IPA uploaded successfully![/]")
+        # Check if croc is available and use it if possible
+        use_croc = is_croc_installed()
+        croc_handler = None
+        ipa_url = None
+
+        if use_croc:
+            console.print("\n[bold blue]Using croc for file transfer...[/]")
+            console.print(
+                "[bold blue]Croc allows secure peer-to-peer file transfers without uploading to a server.[/]"
+            )
+
+            # Create croc handler and start upload in background
+            croc_handler = CrocHandler()
+            transfer_code = croc_handler.upload(Path(args.ipa_path))
+            ipa_url = transfer_code  # For croc, the URL is the code
+
+            console.print(
+                "[green]You can follow the workflow progress in GitHub Actions[/]"
+            )
+
+        else:
+            # Fallback to litterbox
+            console.print("\n[bold blue]Using litterbox for file upload...[/]")
+            console.print(
+                "[yellow]To use faster peer-to-peer transfers and no file size limit, install croc (https://github.com/schollz/croc)[/]"
+            )
+            uploader = LitterboxUploader()
+            ipa_url = uploader.upload(args.ipa_path)
+            console.print("[green]IPA uploaded successfully to litterbox![/]")
 
         # Prepare and execute workflow
         workflow_inputs = {
+            "run_uuid": str(uuid.uuid4()),
             "ipa_url": ipa_url,
             "cert_type": args.certificate,
             "signing_args": build_signing_args(args),
             "apple_id": apple_id,
+            "use_croc": str(use_croc).lower(),  # Send as "true" or "false" string
         }
 
-        run_id = handle_workflow_execution(
-            gh_secrets, workflow_inputs, github_config, Path(args.ipa_path)
-        )
-        console.print(
-            f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
-        )
-        return 0
+        # Trigger workflow
+        run_uuid = gh_secrets.trigger_workflow("sign.yml", workflow_inputs)
+        console.print("[green]Successfully triggered signing workflow![/]")
+
+        # Direct URL to the workflow
+        workflow_url = f"https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_uuid}"
+        console.print(f"[blue]Workflow URL: {workflow_url}[/]")
+
+        # Now wait for workflow to complete
+        try:
+            console.print("\n[bold blue]Monitoring workflow execution...[/]")
+            console.print(
+                "[yellow]If using croc, please keep this terminal open until files are transferred[/]"
+            )
+
+            run = gh_secrets.wait_for_workflow("sign.yml", run_uuid)
+            run_id = run["id"]
+
+            console.print("\n[bold blue]Fetching workflow outputs...[/]")
+            outputs = gh_secrets.get_workflow_outputs(run_id)
+
+            if "url" in outputs and outputs["url"]:
+                console.print(f"\n[green]✓ Signing completed successfully![/]")
+                console.print(f"[green]Signed IPA available at:[/] {outputs['url']}")
+                signed_path = download_and_rename_ipa(
+                    outputs["url"], Path(args.ipa_path)
+                )
+                console.print(
+                    f"\n[bold green]✓ All done![/] Your signed IPA is ready at: {signed_path}"
+                )
+            else:
+                console.print(
+                    "[yellow]⚠ Warning: Workflow completed but could not find signed IPA URL[/]"
+                )
+                console.print(
+                    f"Please check the workflow logs: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
+                )
+
+            console.print(
+                f"\nYou can view the workflow details at: https://github.com/{github_config['repo_owner']}/{github_config['repo_name']}/actions/runs/{run_id}"
+            )
+            return 0
+
+        except TimeoutError:
+            console.print("[red]❌ Workflow timed out![/]")
+            return 1
+        except Exception as e:
+            console.print("[red]❌ Workflow failed![/]")
+            console.print(str(e))
+            return 1
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/]")
+        if use_croc and croc_handler:
+            croc_handler.stop()
         return 1
+
+    finally:
+        # Always stop croc when we're done
+        if use_croc and croc_handler:
+            croc_handler.stop()
 
 
 def run_sign_ci_command(args):
