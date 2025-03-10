@@ -9,7 +9,7 @@ from rich.json import JSON
 # Add the parent directory of 'src' to the system path.. kinda hacky but it works
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from warpsign.src.apple.capability_mappings import (
+from warpsign.src.constants.capability_mappings import (
     CAPABILITY_MAPPING,
     SPECIAL_CAPABILITIES,
 )
