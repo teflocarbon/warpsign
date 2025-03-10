@@ -188,103 +188,78 @@ def handle_workflow_execution(
     try:
         console.print("\n[bold blue]Monitoring workflow execution...[/]")
 
-        # Create the receiver if using croc
-        croc_receiver = None
+        # Create variables needed for croc transfer
         use_croc = workflow_inputs.get("use_croc") == "true"
         croc_code = workflow_inputs.get("ipa_url") if use_croc else None
-
-        # Variable to store the signed IPA path
         signed_ipa_path = None
 
-        # Watch the workflow for status updates and to detect when we need to receive the file
-        run = None
-        previous_steps = None
-        while True:
-            run = gh_secrets.get_workflow_run("sign.yml", run_uuid)
-            if not run:
-                time.sleep(5)
-                continue
+        # Create step callbacks dictionary for the workflow monitoring
+        step_callbacks = {}
 
-            # Get the run ID
-            run_id = run["id"]
+        if use_croc:
+            # Define the callback function for croc upload step
+            def handle_croc_upload_step(step_data, status):
+                nonlocal signed_ipa_path
 
-            # Get the run status
-            status = run.get("status")
-            conclusion = run.get("conclusion")
+                # Only handle the step if we haven't already downloaded the file
+                if signed_ipa_path is not None:
+                    return
 
-            # If the run is completed, break the loop
-            if status == "completed":
-                break
-
-            # Check for the "Upload IPA with croc" step if we're using croc
-            if use_croc:
-                current_steps = gh_secrets.get_workflow_steps(run_id)
-
-                # Find if "Upload IPA with croc" is currently running or just completed
-                upload_step_running = any(
-                    s["name"] == "Upload IPA with croc" and s["status"] == "in_progress"
-                    for s in current_steps
+                console.print(
+                    "\n[bold yellow]Detected 'Upload IPA with croc' step - preparing to receive file[/]"
                 )
 
-                upload_step_completed = any(
-                    s["name"] == "Upload IPA with croc"
-                    and s["status"] == "completed"
-                    and s["conclusion"] == "success"
-                    for s in current_steps
-                )
+                try:
+                    # Create a temporary directory for the downloaded IPA
+                    temp_dir = Path(os.path.expanduser("~")) / ".warpsign" / "downloads"
+                    temp_dir.mkdir(parents=True, exist_ok=True)
 
-                # If the step is running or just completed and we haven't received the file yet
-                if (
-                    upload_step_running or upload_step_completed
-                ) and signed_ipa_path is None:
+                    # Create the receiver and receive the file
+                    croc_receiver = CrocHandler(code=croc_code)
                     console.print(
-                        "\n[bold yellow]Detected 'Upload IPA with croc' step - preparing to receive file[/]"
+                        f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
                     )
 
-                    try:
-                        # Create a temporary directory for the downloaded IPA
-                        temp_dir = (
-                            Path(os.path.expanduser("~")) / ".warpsign" / "downloads"
-                        )
-                        temp_dir.mkdir(parents=True, exist_ok=True)
+                    # Receive the file
+                    signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
 
-                        # Create the receiver and receive the file
-                        croc_receiver = CrocHandler(code=croc_code)
-                        console.print(
-                            f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
-                        )
+                    # Rename the file to match our naming convention
+                    new_filename = (
+                        f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
+                    )
+                    temp_new_path = temp_dir / new_filename
+                    signed_ipa_path.rename(temp_new_path)
 
-                        # Receive the file
-                        signed_ipa_path = croc_receiver.receive(output_dir=temp_dir)
+                    # Move the file to the user's current directory
+                    current_dir = Path.cwd()
+                    final_path = current_dir / new_filename
 
-                        # Rename the file to match our naming convention
-                        new_filename = (
-                            f"{original_ipa_path.stem}-signed{original_ipa_path.suffix}"
-                        )
-                        temp_new_path = temp_dir / new_filename
-                        signed_ipa_path.rename(temp_new_path)
+                    # Copy to current directory, overwriting if exists
+                    shutil.move(temp_new_path, final_path)
+                    signed_ipa_path = final_path
 
-                        # Move the file to the user's current directory
-                        current_dir = Path.cwd()
-                        final_path = current_dir / new_filename
+                    console.print(
+                        f"[bold green]✓ Successfully received signed IPA: {signed_ipa_path}[/]"
+                    )
+                except Exception as e:
+                    console.print(f"[bold red]Error receiving file: {str(e)}[/]")
+                    console.print(
+                        "[yellow]Will try again later if workflow is still running[/]"
+                    )
+                    signed_ipa_path = None  # Reset so we can try again
 
-                        # Copy to current directory, overwriting if exists
-                        shutil.move(temp_new_path, final_path)
-                        signed_ipa_path = final_path
+            # Add the callback for the croc upload step
+            step_callbacks["Upload IPA with croc"] = handle_croc_upload_step
 
-                        console.print(
-                            f"[bold green]✓ Successfully received signed IPA: {signed_ipa_path}[/]"
-                        )
-                    except Exception as e:
-                        console.print(f"[bold red]Error receiving file: {str(e)}[/]")
-                        console.print(
-                            "[yellow]Continuing to monitor workflow - will try again later[/]"
-                        )
+        # Watch the workflow with the callbacks
+        run = gh_secrets.wait_for_workflow(
+            "sign.yml", run_uuid, step_callbacks=step_callbacks
+        )
 
-            # Wait before checking again
-            time.sleep(5)
+        # Once the workflow is complete, check the result
+        run_id = run["id"]
+        conclusion = run.get("conclusion")
 
-        # The run has completed, check the conclusion
         if conclusion == "success":
             console.print("\n[bold green]✓ Workflow completed successfully![/]")
 

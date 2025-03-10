@@ -7,6 +7,7 @@ import datetime
 import time
 from zipfile import ZipFile
 from io import BytesIO
+from typing import Dict, Callable, List, Optional
 
 from warpsign.logger import get_console
 
@@ -69,7 +70,6 @@ class GitHubHandler:
         data = {"ref": "main", "inputs": inputs}
 
         console.print("\nWorkflow dispatch request details:")
-        console.print(f"URL: {dispatch_url}")
         console.print(f"Data: {json.dumps(data, indent=2)}")
 
         try:
@@ -160,8 +160,16 @@ class GitHubHandler:
 
         return steps
 
-    def log_current_steps(self, run_id: int, previous_steps=None):
-        """Log currently running steps"""
+    def log_current_steps(self, run_id: int, previous_steps=None, step_callbacks=None):
+        """Log currently running steps and trigger callbacks for specific steps.
+
+        Args:
+            run_id: The workflow run ID
+            previous_steps: The previous steps state for comparison
+            step_callbacks: Dict mapping step names to callback functions.
+                           Callbacks will be called with the step data as argument
+                           when that step is found to be running or just completed.
+        """
         try:
             steps = self.get_workflow_steps(run_id)
             if not steps:
@@ -175,6 +183,27 @@ class GitHubHandler:
                 if s["status"] == "completed"
                 and s["conclusion"] not in ["skipped", None]
             ]
+
+            # Run callbacks for matching steps
+            if step_callbacks:
+                for step in active_steps:
+                    step_name = step["name"]
+                    if step_name in step_callbacks:
+                        console.print(f"\n[blue]Detected step running: {step_name}[/]")
+                        step_callbacks[step_name](step, "running")
+
+                # Check for newly completed steps with callbacks
+                if previous_steps:
+                    for step in completed_steps:
+                        step_name = step["name"]
+                        if step_name in step_callbacks and not any(
+                            ps["name"] == step_name and ps["status"] == "completed"
+                            for ps in previous_steps
+                        ):
+                            console.print(
+                                f"\n[green]Detected step completed: {step_name}[/]"
+                            )
+                            step_callbacks[step_name](step, "completed")
 
             # Only print if there are new active steps or newly completed steps
             if previous_steps is None or steps != previous_steps:
@@ -213,9 +242,21 @@ class GitHubHandler:
             return previous_steps
 
     def wait_for_workflow(
-        self, workflow_id: str, run_uuid: str = None, timeout: int = 1800
+        self,
+        workflow_id: str,
+        run_uuid: str = None,
+        timeout: int = 1800,
+        step_callbacks=None,
     ) -> dict:
-        """Wait for workflow to complete and return the run data"""
+        """Wait for workflow to complete and return the run data.
+
+        Args:
+            workflow_id: The workflow ID to wait for
+            run_uuid: The UUID for the specific run to track
+            timeout: Maximum time to wait in seconds
+            step_callbacks: Dict mapping step names to callback functions
+                          that will be called when those steps run or complete
+        """
         import time
 
         start_time = time.time()
@@ -277,7 +318,9 @@ class GitHubHandler:
 
             # Log current steps
             if found_run_id:
-                previous_steps = self.log_current_steps(found_run_id, previous_steps)
+                previous_steps = self.log_current_steps(
+                    found_run_id, previous_steps, step_callbacks
+                )
 
             if status == "completed":
                 if conclusion == "success":
