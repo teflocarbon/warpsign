@@ -174,6 +174,46 @@ input[type="password"]:focus {
   border-left: 4px solid var(--error);
 }
 
+.required {
+  color: var(--error);
+  margin-left: 2px;
+}
+
+.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.2) !important;
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.field-hint {
+  font-size: 0.85rem;
+  color: var(--text-light);
+  margin: 4px 0 0 0;
+}
+
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translateX(-3px);
+  }
+
+  40%,
+  60% {
+    transform: translateX(3px);
+  }
+}
+
 @media (max-width: 768px) {
   .container {
     padding: 20px;

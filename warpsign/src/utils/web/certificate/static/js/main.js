@@ -45,7 +45,8 @@ function updateFilename(input, display) {
 
 function uploadCertificate(type, fileInputId, passwordId, messageId) {
   const fileInput = document.getElementById(fileInputId);
-  const password = document.getElementById(passwordId).value;
+  const passwordInput = document.getElementById(passwordId);
+  const password = passwordInput.value;
   const messageDiv = document.getElementById(messageId);
   const buttonId =
     type === "development" ? "dev-upload-btn" : "dist-upload-btn";
@@ -58,6 +59,15 @@ function uploadCertificate(type, fileInputId, passwordId, messageId) {
   if (!fileInput.files.length) {
     messageDiv.className = "error-message";
     messageDiv.textContent = "Please select a certificate file.";
+    return;
+  }
+
+  // Check if password is empty
+  if (!password.trim()) {
+    messageDiv.className = "error-message";
+    messageDiv.textContent = "Your certificate must have a password.";
+    passwordInput.classList.add("input-error");
+    setTimeout(() => passwordInput.classList.remove("input-error"), 1500);
     return;
   }
 

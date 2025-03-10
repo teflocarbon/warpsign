@@ -34,12 +34,15 @@
         <input type="file" id="dev-file-input" style="display: none" />
 
         <div class="input-group">
-          <label for="dev-password">Certificate Password:</label>
+          <label for="dev-password"
+            >Certificate Password: <span class="required">*</span></label
+          >
           <input
             type="password"
             id="dev-password"
-            placeholder="Enter password"
+            placeholder="Enter password (required)"
           />
+          <p class="field-hint">A password is required with your certificate</p>
         </div>
 
         <button class="btn" id="dev-upload-btn">
@@ -66,12 +69,15 @@
         <input type="file" id="dist-file-input" style="display: none" />
 
         <div class="input-group">
-          <label for="dist-password">Certificate Password:</label>
+          <label for="dist-password"
+            >Certificate Password: <span class="required">*</span></label
+          >
           <input
             type="password"
             id="dist-password"
-            placeholder="Enter password"
+            placeholder="Enter password (required)"
           />
+          <p class="field-hint">A password is required with your certificate</p>
         </div>
 
         <button class="btn" id="dist-upload-btn">
