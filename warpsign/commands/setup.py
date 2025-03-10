@@ -304,14 +304,23 @@ def setup_certificates():
 
     table = Table(title="Uploaded Certificates", box=box.ROUNDED)
     table.add_column("Type", style="cyan")
-    table.add_column("Status", style="green")
+    table.add_column("Status")  # Remove default style so we can set it per row
 
     table.add_row(
-        "Development Certificate", "✓ Uploaded" if dev_cert.exists() else "Not uploaded"
+        "Development Certificate",
+        (
+            "[bold green]✓ Found[/bold green]"
+            if dev_cert.exists()
+            else "[bold red]Not found[/bold red]"
+        ),
     )
     table.add_row(
         "Distribution Certificate",
-        "✓ Uploaded" if dist_cert.exists() else "Not uploaded",
+        (
+            "[bold green]✓ Found[/bold green]"
+            if dist_cert.exists()
+            else "[bold red]Not found[/bold red]"
+        ),
     )
 
     console.print(table)
@@ -347,15 +356,10 @@ def run_setup_command(args):
     console.print("\n[bold green]Setup complete![/bold green]")
 
     console.print(
-        Markdown(
-            """
-            **What's next?**
-            
-            - To sign an IPA file: `warpsign sign your-app.ipa`
-            - To sign in a CI environment: `warpsign sign-ci --certificate distribution`
-            - For more help: `warpsign --help`
-            """
-        )
+        "\n[bold cyan]What's next?[/bold cyan]\n\n"
+        "• To sign an IPA file: [green]warpsign sign your-app.ipa[/green]\n"
+        "• To sign in a CI environment: [green]warpsign sign-ci --certificate distribution[/green]\n"
+        "• For more help: [green]warpsign --help[/green]"
     )
 
     return 0
