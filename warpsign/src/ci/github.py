@@ -7,6 +7,11 @@ import datetime
 import time
 from zipfile import ZipFile
 from io import BytesIO
+from typing import Dict, Callable, List, Optional
+
+from warpsign.logger import get_console
+
+console = get_console()
 
 
 class GitHubHandler:
@@ -64,9 +69,8 @@ class GitHubHandler:
         dispatch_url = f"{workflow_url}/dispatches"
         data = {"ref": "main", "inputs": inputs}
 
-        print("\nWorkflow dispatch request details:")
-        print(f"URL: {dispatch_url}")
-        print(f"Data: {json.dumps(data, indent=2)}")
+        console.print("\nWorkflow dispatch request details:")
+        console.print(f"Data: {json.dumps(data, indent=2)}")
 
         try:
             response = requests.post(dispatch_url, headers=self.headers, json=data)
@@ -78,11 +82,11 @@ class GitHubHandler:
                 error_msg += f"\nResponse body: {e.response.text}"
             raise Exception(error_msg) from e
 
-        print(f"\nResponse status: {response.status_code}")
-        print(f"Response body: {response.text}")
+        console.print(f"\nResponse status: {response.status_code}")
+        console.print(f"Response body: {response.text}")
 
         # Add delay to allow GitHub to queue the workflow
-        print("\nWaiting for GitHub to queue the workflow...")
+        console.print("\nWaiting for GitHub to queue the workflow...")
         time.sleep(5)
 
         return run_uuid
@@ -130,10 +134,129 @@ class GitHubHandler:
 
     # This code is awful, but it works and GitHub's API is a pain.
 
+    def get_workflow_steps(self, run_id: int) -> list:
+        """Get details about the steps in a workflow run"""
+        url = (
+            f"{self.base_url}/repos/{self.owner}/{self.repo}/actions/runs/{run_id}/jobs"
+        )
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+
+        jobs_data = response.json()
+        steps = []
+
+        for job in jobs_data.get("jobs", []):
+            for step in job.get("steps", []):
+                steps.append(
+                    {
+                        "name": step.get("name", "Unknown step"),
+                        "status": step.get("status", "unknown"),
+                        "conclusion": step.get("conclusion", None),
+                        "number": step.get("number", 0),
+                        "started_at": step.get("started_at", None),
+                        "completed_at": step.get("completed_at", None),
+                    }
+                )
+
+        return steps
+
+    def log_current_steps(self, run_id: int, previous_steps=None, step_callbacks=None):
+        """Log currently running steps and trigger callbacks for specific steps.
+
+        Args:
+            run_id: The workflow run ID
+            previous_steps: The previous steps state for comparison
+            step_callbacks: Dict mapping step names to callback functions.
+                           Callbacks will be called with the step data as argument
+                           when that step is found to be running or just completed.
+        """
+        try:
+            steps = self.get_workflow_steps(run_id)
+            if not steps:
+                return previous_steps
+
+            # Find steps that are in_progress
+            active_steps = [s for s in steps if s["status"] == "in_progress"]
+            completed_steps = [
+                s
+                for s in steps
+                if s["status"] == "completed"
+                and s["conclusion"] not in ["skipped", None]
+            ]
+
+            # Run callbacks for matching steps
+            if step_callbacks:
+                for step in active_steps:
+                    step_name = step["name"]
+                    if step_name in step_callbacks:
+                        console.print(f"\n[blue]Detected step running: {step_name}[/]")
+                        step_callbacks[step_name](step, "running")
+
+                # Check for newly completed steps with callbacks
+                if previous_steps:
+                    for step in completed_steps:
+                        step_name = step["name"]
+                        if step_name in step_callbacks and not any(
+                            ps["name"] == step_name and ps["status"] == "completed"
+                            for ps in previous_steps
+                        ):
+                            console.print(
+                                f"\n[green]Detected step completed: {step_name}[/]"
+                            )
+                            step_callbacks[step_name](step, "completed")
+
+            # Only print if there are new active steps or newly completed steps
+            if previous_steps is None or steps != previous_steps:
+                # Print currently running steps
+                if active_steps:
+                    console.print("\n[bold blue][RUNNING STEPS][/]")
+                    for step in active_steps:
+                        console.print(f"→ {step['name']}")
+
+                # Print recently completed steps (that weren't in previous update)
+                if previous_steps:
+                    new_completed = []
+                    for step in completed_steps:
+                        if not any(
+                            ps["name"] == step["name"] and ps["status"] == "completed"
+                            for ps in previous_steps
+                        ):
+                            new_completed.append(step)
+
+                    if new_completed:
+                        console.print("\n[bold green][COMPLETED STEPS][/]")
+                        for step in new_completed:
+                            status_icon = (
+                                "✅" if step["conclusion"] == "success" else "❌"
+                            )
+                            status_color = (
+                                "green" if step["conclusion"] == "success" else "red"
+                            )
+                            console.print(
+                                f"[{status_color}]{status_icon} {step['name']}[/]"
+                            )
+
+            return steps
+        except Exception as e:
+            console.print(f"[red]Could not fetch step information: {str(e)}[/]")
+            return previous_steps
+
     def wait_for_workflow(
-        self, workflow_id: str, run_uuid: str = None, timeout: int = 1800
+        self,
+        workflow_id: str,
+        run_uuid: str = None,
+        timeout: int = 1800,
+        step_callbacks=None,
     ) -> dict:
-        """Wait for workflow to complete and return the run data"""
+        """Wait for workflow to complete and return the run data.
+
+        Args:
+            workflow_id: The workflow ID to wait for
+            run_uuid: The UUID for the specific run to track
+            timeout: Maximum time to wait in seconds
+            step_callbacks: Dict mapping step names to callback functions
+                          that will be called when those steps run or complete
+        """
         import time
 
         start_time = time.time()
@@ -141,6 +264,7 @@ class GitHubHandler:
         last_conclusion = None
         found_run_id = None
         first_announcement = True
+        previous_steps = None
 
         while time.time() - start_time < timeout:
             # Get fresh run details each time
@@ -152,17 +276,26 @@ class GitHubHandler:
             # Store the run ID once we find it
             if found_run_id is None:
                 found_run_id = run["id"]
+                console.print(f"\n[bold cyan][WORKFLOW RUN DETAILS][/]")
+                console.print(f"Run ID: {run['id']}")
+                console.print(
+                    f"HTML URL: [link={run['html_url']}]{run['html_url']}[/link]"
+                )
+                console.print(f"Created at: {run['created_at']}")
+                first_announcement = False
             elif run["id"] != found_run_id:
                 # Skip if we found a different run
                 time.sleep(5)
                 continue
 
-            # Announce the run only once when we first find it
+            # Only print announcement once when we first find the run
             if first_announcement:
-                print(f"\nFound workflow run:")
-                print(f"Run ID: {run['id']}")
-                print(f"HTML URL: {run['html_url']}")
-                print(f"Created at: {run['created_at']}")
+                console.print(f"\n[bold cyan][WORKFLOW RUN DETAILS][/]")
+                console.print(f"Run ID: {run['id']}")
+                console.print(
+                    f"HTML URL: [link={run['html_url']}]{run['html_url']}[/link]"
+                )
+                console.print(f"Created at: {run['created_at']}")
                 first_announcement = False
 
             # Get fresh status info
@@ -171,35 +304,40 @@ class GitHubHandler:
 
             # Only print status if it changed
             if status != last_status or conclusion != last_conclusion:
-                print(f"\nWorkflow status: {status}")
+                console.print(f"\n[bold yellow][WORKFLOW STATUS UPDATE][/]")
+                console.print(f"Status: {status}")
                 if conclusion:
-                    print(f"Conclusion: {conclusion}")
+                    conclusion_color = (
+                        "green"
+                        if conclusion == "success"
+                        else "red" if conclusion == "failure" else "yellow"
+                    )
+                    console.print(f"Conclusion: [{conclusion_color}]{conclusion}[/]")
                 last_status = status
                 last_conclusion = conclusion
 
-                # Also get detailed run information
-                run_detail_url = f"{self.base_url}/repos/{self.owner}/{self.repo}/actions/runs/{run['id']}"
-                run_response = requests.get(run_detail_url, headers=self.headers)
-                if run_response.status_code == 200:
-                    run_detail = run_response.json()
-                    if run_detail.get("jobs_url"):
-                        jobs_response = requests.get(
-                            run_detail["jobs_url"], headers=self.headers
-                        )
-                        if jobs_response.status_code == 200:
-                            jobs = jobs_response.json().get("jobs", [])
-                            if jobs:
-                                current_job = jobs[0]  # We only have one job.
+            # Log current steps
+            if found_run_id:
+                previous_steps = self.log_current_steps(
+                    found_run_id, previous_steps, step_callbacks
+                )
 
             if status == "completed":
                 if conclusion == "success":
+                    console.print("\n[bold green][WORKFLOW COMPLETED][/]")
+                    console.print("[green]✅ Workflow completed successfully![/]")
                     return run
                 elif conclusion == "failure":
-                    error_msg = f"\nWorkflow failed!"
-                    error_msg += f"\nView details at: https://github.com/{self.owner}/{self.repo}/actions/runs/{run['id']}"
-                    raise Exception(error_msg)
+                    error_msg = f"\n[bold red][ERROR] Workflow failed![/]"
+                    error_msg += f"\nView details at: [link=https://github.com/{self.owner}/{self.repo}/actions/runs/{run['id']}]https://github.com/{self.owner}/{self.repo}/actions/runs/{run['id']}[/link]"
+                    console.print(error_msg)
+                    raise Exception(
+                        f"Workflow failed! View details at: https://github.com/{self.owner}/{self.repo}/actions/runs/{run['id']}"
+                    )
                 elif conclusion == "cancelled":
-                    print("\nWorkflow was cancelled, exiting...")
+                    console.print(
+                        "\n[bold yellow][WARNING] Workflow was cancelled, exiting...[/]"
+                    )
                     raise Exception("Workflow was cancelled")
 
             time.sleep(5)
@@ -214,10 +352,10 @@ class GitHubHandler:
                 url = line.split("Final URL: ", 1)[1].strip()
                 # Ignore raw variable names
                 if url and not url.startswith("$"):
-                    print(f"Found URL in logs: {url}")
+                    console.print(f"Found URL in logs: [link={url}]{url}[/link]")
                     return {"url": url}
 
-        print("\nNo URL found in logs.")
+        console.print("\n[yellow]No URL found in logs.[/]")
         return {}
 
     def get_run_logs(self, run_id: int) -> str:
@@ -225,29 +363,29 @@ class GitHubHandler:
         url = (
             f"{self.base_url}/repos/{self.owner}/{self.repo}/actions/runs/{run_id}/logs"
         )
-        print(f"\nFetching logs from: {url}")
+        console.print(f"\nFetching logs from: [dim]{url}[/]")
 
         # Get the redirect URL
         response = requests.get(url, headers=self.headers, allow_redirects=False)
-        print(f"Initial response status: {response.status_code}")
+        console.print(f"Initial response status: {response.status_code}")
         if response.status_code != 302:
             return "Could not fetch logs: No redirect found"
 
         # Get the logs zip file from the redirect URL
         logs_url = response.headers.get("Location")
-        print(f"Redirect URL: {logs_url}")
+        console.print(f"Redirect URL: [dim]{logs_url}[/]")
         if not logs_url:
             return "Could not fetch logs: No download URL found"
 
         try:
             # Download the zip file
-            print("Downloading logs zip file...")
+            console.print("Downloading logs zip file...")
             zip_response = requests.get(logs_url)
             zip_response.raise_for_status()
-            print(f"Zip download status: {zip_response.status_code}")
+            console.print(f"Zip download status: {zip_response.status_code}")
 
             # Extract the sign.txt file from the zip
-            print("Opening zip file...")
+            console.print("Opening zip file...")
             with ZipFile(BytesIO(zip_response.content)) as zip_file:
                 # Look specifically for 0_sign.txt
                 if "0_sign.txt" in zip_file.namelist():
@@ -255,5 +393,5 @@ class GitHubHandler:
                 return "Could not find 0_sign.txt in logs"
 
         except Exception as e:
-            print(f"Error getting logs: {str(e)}")
+            console.print(f"[red]Error getting logs: {str(e)}[/]")
             return f"Could not fetch logs: {str(e)}"

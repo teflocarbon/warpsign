@@ -100,6 +100,12 @@ def main():
         required=True,
         help="Certificate type to use for signing",
     )
+    sign_ci_parser.add_argument(
+        "--upload-provider",
+        choices=["litterbox", "croc"],
+        default="litterbox",
+        help="Provider for uploading IPA files: litterbox (up to 1GB) or croc (p2p transfer, unlimited size) [default: litterbox]",
+    )
 
     # Setup command
     setup_parser = subparsers.add_parser(
