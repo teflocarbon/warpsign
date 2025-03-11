@@ -64,8 +64,9 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 - Active internet connection
 - GitHub account with repository access
 
-> [!WARNING]
-> **GitHub Actions Minutes Usage**: WarpSign CI uses macOS runners which consume 10x more minutes than Linux runners. Free and Pro GitHub accounts have limited monthly minutes. Typically, a signing job with litterbox will take 1-2 minutes (counting as 10-20 minutes against your quota). Using croc can vary based on your connection speed and may use more minutes. [Check GitHub's billing documentation](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions) for more information on minute allocations.
+> [!WARNING] > **GitHub Actions Minutes Usage**: WarpSign CI uses macOS runners which consume 10x more minutes than Linux runners. Free and Pro GitHub accounts have limited monthly minutes. Typically, a signing job with litterbox will take 1-2 minutes (counting as 10-20 minutes against your quota). Using croc can vary based on your connection speed and may use more minutes. [Check GitHub's billing documentation](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions) for more information on minute allocations.
+>
+> **Public Repository Note**: GitHub Actions usage is free for standard GitHub-hosted runners in public repositories. However, making your repository public exposes sensitive information in the workflow logs (like your Apple Developer name and Team ID) and may violate GitHub's terms of service for this use case. Use public repositories at your own risk.
 
 ## 📦 Installation
 
