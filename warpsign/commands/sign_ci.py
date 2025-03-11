@@ -157,7 +157,7 @@ def build_signing_args(args) -> str:
         "encode_ids",
         "patch_ids",
         "command",
-        "upload-provider",
+        "upload_provider",  # This needs to have an _ because of how argparse works.
     }
     signing_args = []
 
@@ -169,6 +169,7 @@ def build_signing_args(args) -> str:
         elif isinstance(value, (str, Path)) and value:
             signing_args.append(f"--{key.replace('_', '-')} {value}")
 
+    console.print(f"[bold blue]Signing arguments:[/] {signing_args}")
     return " ".join(signing_args)
 
 
