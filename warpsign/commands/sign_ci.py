@@ -151,7 +151,14 @@ def build_signing_args(args) -> str:
     """Build signing arguments string from parsed arguments."""
     # We need to skip some keys that are used for other purposes. Some are
     # automatically included whilst others are internal only.
-    skip_keys = {"ipa_path", "certificate", "encode_ids", "patch_ids", "command"}
+    skip_keys = {
+        "ipa_path",
+        "certificate",
+        "encode_ids",
+        "patch_ids",
+        "command",
+        "upload-provider",
+    }
     signing_args = []
 
     for key, value in vars(args).items():
@@ -367,12 +374,22 @@ def main(parsed_args=None) -> int:
         # Upload certificates
         upload_certificates(gh_secrets, config)
 
-        # Check if croc is available and use it if possible
-        use_croc = is_croc_installed()
+        # Choose upload provider based on user preference
+        use_croc = args.upload_provider == "croc"
         croc_handler = None
         ipa_url = None
 
         if use_croc:
+            # Check if croc is available
+            if not is_croc_installed():
+                console.print(
+                    "[red]Error: croc is not installed but was requested as upload provider[/]"
+                )
+                console.print(
+                    "[yellow]Install croc (https://github.com/schollz/croc) or use --upload-provider litterbox[/]"
+                )
+                return 1
+
             console.print("\n[bold blue]Using croc for file transfer...[/]")
             console.print(
                 "[bold blue]Croc allows secure peer-to-peer file transfers without uploading to a server.[/]"
@@ -388,11 +405,8 @@ def main(parsed_args=None) -> int:
             )
 
         else:
-            # Fallback to litterbox
+            # Use litterbox (default)
             console.print("\n[bold blue]Using litterbox for file upload...[/]")
-            console.print(
-                "[yellow]To use faster peer-to-peer transfers and no file size limit, install croc (https://github.com/schollz/croc)[/]"
-            )
             uploader = LitterboxUploader()
             ipa_url = uploader.upload(args.ipa_path)
             console.print("[green]IPA uploaded successfully to litterbox![/]")
