@@ -17,8 +17,8 @@ from warpsign.logger import get_console
 from warpsign.src.apple.authentication_helper import authenticate_with_apple
 from warpsign.src.ci.github import GitHubHandler
 from warpsign.src.ci.litterbox import LitterboxUploader
+from warpsign.src.ci.croc_handler import CrocHandler
 from warpsign.src.utils.config_loader import load_config
-from warpsign.src.transfers.croc_handler import CrocHandler
 
 console = get_console()
 
