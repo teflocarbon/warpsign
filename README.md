@@ -64,8 +64,7 @@ This project is based on the fantastic [SignTools-CI](https://github.com/SignToo
 - Active internet connection
 - GitHub account with repository access
 
-> [!IMPORTANT]
-> CI signing is limited to files with a maximum of 1GB. At this time, they're also unable to use the `--icon` option.
+> [!WARNING] > **GitHub Actions Minutes Usage**: WarpSign CI uses macOS runners which consume 10x more minutes than Linux runners. Free and Pro GitHub accounts have limited monthly minutes. Typically, a signing job with litterbox will take 1-2 minutes (counting as 10-20 minutes against your quota). Using croc can vary based on your connection speed and may use more minutes. [Check GitHub's billing documentation](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions) for more information on minute allocations.
 
 ## 📦 Installation
 
@@ -162,6 +161,23 @@ warpsign setup --ci
 ```bash
 warpsign sign-ci my-app.ipa
 ```
+
+#### Upload Providers
+
+WarpSign supports two upload providers for CI signing. You can specify your preferred provider using `--upload-provider`:
+
+| Provider                | Description                      | Pros                                                                                        | Cons                                                                                                                           |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **litterbox** (default) | Third-party file sharing service | • Minimizes GitHub Actions runner time<br>• Better for slower connections<br>• Simple setup | • 1GB file size limit<br>• Files stored on third-party server                                                                  |
+| **croc**                | P2P secure file transfer         | • No file size limit<br>• More private (direct P2P transfer)<br>• End-to-end encryption     | • Requires fast, stable connection<br>• May use more GitHub Actions minutes<br>• May not work depending on network environment |
+
+```bash
+# Use croc for P2P file transfer
+warpsign sign-ci my-app.ipa --upload-provider croc
+```
+
+> [!IMPORTANT]
+> Carefully consider these options based on your connection speed, file size, and privacy requirements.
 
 > [!IMPORTANT]
 > It's recommended to use a `Fine-grained personal access token` from GitHub. You only need to enable Read/write access on Secret and Actions. If you don't know how to create a token, please read the [GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
