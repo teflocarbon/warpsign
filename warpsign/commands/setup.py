@@ -335,7 +335,7 @@ def run_setup_command(args):
             Text("WarpSign Setup Wizard", style="bold magenta"),
             subtitle="Let's get you ready to sign apps!",
             border_style="green",
-            padding=(1, 2),
+            padding=(1, 8),
         )
     )
 
