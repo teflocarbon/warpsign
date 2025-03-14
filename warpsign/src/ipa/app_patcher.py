@@ -10,6 +10,7 @@ from lief import MachO
 from enum import Enum, auto
 from warpsign.logger import get_console
 import json
+import os
 
 from warpsign.src.utils.icon_handler import IconHandler
 from warpsign.src.core.bundle_mapper import BundleMapping, IDType
@@ -436,6 +437,40 @@ class AppPatcher:
 
         self.console.log(f"[blue]Total replacements in binary:[/] {total_replacements}")
 
+    def get_dylib_path(self, binary_path: Path, dylib_name: str) -> Optional[str]:
+        """
+        Calculate path using @loader_path for more reliable dylib loading
+        """
+        
+        # @rpath isn't always present.
+        # @executable_path has bullshit behavior.
+        # # @loader_path is the most reliable.. somehow?
+        
+        parts = binary_path.parts
+        app_index = next((i for i, part in enumerate(parts) if part.endswith('.app')), -1)
+        
+        if app_index != -1:
+            app_dir = Path(*parts[:app_index+1])
+            binary_dir = binary_path.parent
+            frameworks_dir = app_dir / "Frameworks"
+            
+            # Calculate steps to Frameworks directory
+            steps_back = len(binary_dir.parts) - len(frameworks_dir.parent.parts)
+            relative_path = "../" * steps_back + "Frameworks"
+            
+            # Use @loader_path instead of @executable_path
+            dylib_path = f"@loader_path/{relative_path}/{dylib_name}"
+            
+            # Debug logging
+            self.console.log(f"[blue]Binary location:[/] {binary_dir}")
+            self.console.log(f"[blue]Steps back:[/] {steps_back}")
+            self.console.log(f"[green]Final dylib path:[/] {dylib_path}")
+            
+            return dylib_path
+        
+        self.console.log(f"[red]Could not find .app bundle in path:[/] {binary_path}")
+        return None
+
     def inject_dylib_with_lief(self, binary_path: Path, dylib_name: str) -> None:
         """Inject a dylib into a Mach-O binary using LIEF"""
         self.console.log(f"[blue]Injecting {dylib_name} with LIEF[/]")
@@ -462,23 +497,25 @@ class AppPatcher:
             else:
                 self.console.log("[green]Binary is not encrypted, proceeding")
 
-            # Print and verify @rpath configuration
-            rpath_found = False
-            for rpath in binary.rpaths:
-                if rpath.path == "@executable_path/Frameworks":
-                    rpath_found = True
+            # Print existing rpaths for debugging
+            self.console.log(f"[blue]Binary is located at: {binary_path}")
+            
+            # Get the optimal dylib path
+            dylib_path = self.get_dylib_path(binary_path, dylib_name)
+            
+            if dylib_path is None:
+                self.console.log(f"[red]ERROR: Could not determine a valid path to {dylib_name} for {binary_path.name}[/]")
+                self.console.log("[yellow]Skipping injection to avoid app crash[/]")
+                continue
+                
+            self.console.log(f"[green]Using path:[/] {dylib_path}")
 
-            if not rpath_found:
-                dylib_path = f"@executable_path/Frameworks/{dylib_name}"
-            else:
-                dylib_path = f"@rpath/{dylib_name}"
-
-            # Add LC_LOAD_DYLIB command using the determined rpath
+            # Add LC_LOAD_DYLIB command using the determined path
             binary.add_library(dylib_path)
 
         # Write modified binary
         parsed.write(str(binary_path))
-        self.console.log(f"[green]Injected {dylib_path} successfully[/]")
+        self.console.log(f"[green]Injected {dylib_name} successfully with path {dylib_path}[/]")
 
     def check_and_remove_conflicting_dylibs(self, binary_path: Path) -> bool:
         """Check for and remove conflicting dylibs in a binary"""
