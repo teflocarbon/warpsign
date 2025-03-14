@@ -496,9 +496,6 @@ class AppPatcher:
                 raise ValueError("Cannot modify encrypted binary")
             else:
                 self.console.log("[green]Binary is not encrypted, proceeding")
-
-            # Print existing rpaths for debugging
-            self.console.log(f"[blue]Binary is located at: {binary_path}")
             
             # Get the optimal dylib path
             dylib_path = self.get_dylib_path(binary_path, dylib_name)
