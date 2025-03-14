@@ -674,16 +674,27 @@ class SignOrchestrator:
         
         # Check for potential conflicting dylibs in Frameworks directory
         if self.patching_options.inject_plugins_patcher:
-            conflicting_dylib = frameworks_dir / "pluginsinject.dylib"
-            if conflicting_dylib.exists():
-                self.console.print(
-                    "[yellow]⚠️ Warning: Found conflicting pluginsinject.dylib in Frameworks directory"
-                )
-                self.console.print(
-                    "[yellow]This dylib conflicts with WarpsignFix.dylib and will be removed"
-                )
-                conflicting_dylib.unlink()
-                self.console.print("[green]Removed conflicting dylib")
+            conflicting_dylibs = [
+                "pluginsinject.dylib",
+                "sideloadFixerLol.dylib",
+                "sideloadKeychainfix.dylib",
+                "ExtensionFix.dylib",
+                "Widget Extension Fix.dylib",
+                "Plugins Inject.dylib",
+                "pluginsinjectnf.dylib",
+            ]
+            
+            for dylib in conflicting_dylibs:
+                conflicting_dylib = frameworks_dir / dylib
+                if conflicting_dylib.exists():
+                    self.console.print(
+                        f"[yellow]⚠️ Warning: Found conflicting {dylib} in Frameworks directory"
+                    )
+                    self.console.print(
+                        f"[yellow]This dylib conflicts with WarpsignFix.dylib and will be removed"
+                    )
+                    conflicting_dylib.unlink()
+                    self.console.print(f"[green]Removed conflicting {dylib}")
 
         # Pathing is really fucky here.. probably need to fix this but it works for now.
 

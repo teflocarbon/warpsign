@@ -532,8 +532,13 @@ class AppPatcher:
         
         # List of known conflicting dylibs
         conflicting_dylibs = [
-            "@rpath/pluginsinject.dylib",
-            "@executable_path/Frameworks/pluginsinject.dylib"
+            "pluginsinject.dylib",
+            "sideloadFixerLol.dylib",
+            "sideloadKeychainfix.dylib",
+            "ExtensionFix.dylib",
+            "Widget Extension Fix.dylib",
+            "Plugins Inject.dylib",
+            "pluginsinjectnf.dylib",
         ]
         
         # Handle fat binary
@@ -546,15 +551,19 @@ class AppPatcher:
         # Process each binary
         for binary in binaries:
             # Check if binary has conflicting dylibs
-            for dylib in binary.libraries:
-                if dylib.name in conflicting_dylibs:
-                    self.console.log(f"[yellow]Found conflicting dylib: {dylib.name}[/]")
-                    self.console.log("[yellow]This conflicts with WarpsignFix.dylib and will be removed")
-                    
-                    # Remove the dylib
-                    binary.remove_library(dylib.name)
-                    removed_dylibs = True
-        
+            for i, command in enumerate(binary.commands):
+                # Check if it's a dylib command using command type comparison
+                if isinstance(command, lief.MachO.DylibCommand):
+                    # Check if any of the conflicting dylib names are in the command's name
+                    if any(dylib in command.name for dylib in conflicting_dylibs):
+                        self.console.log(f"[yellow]Found conflicting dylib: {command.name}[/]")
+                        self.console.log("[yellow]This conflicts with WarpsignFix.dylib and will be removed")
+                        
+                        # Remove the command at the found index
+                        binary.remove_command(i)
+                        removed_dylibs = True
+                        break
+                
         # Write modified binary if changes were made
         if removed_dylibs:
             self.console.log("[green]Removed conflicting dylibs from binary")
