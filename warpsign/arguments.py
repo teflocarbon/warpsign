@@ -104,9 +104,9 @@ def add_signing_arguments(parser):
     )
 
     parser.add_argument(
-        "--inject-plugins-patcher",
+        "--inject-warpsign-fix",
         action="store_true",
-        help="Inject sideload fix patch dylib, similar to ID patching but dynamic [default: disabled]",
+        help="Inject Warpsign Fix dylib, a swiss army knife of sideloading fixes. [default: disabled]",
     )
 
     parser.add_argument(
@@ -148,7 +148,7 @@ def create_patching_options(args) -> PatchingOptions:
         patch_orientation=args.patch_orientation,
         patch_game_mode=args.patch_game_mode,
         hide_home_indicator=args.hide_home_indicator,
-        inject_plugins_patcher=args.inject_plugins_patcher,
+        inject_warpsign_fix=args.inject_warpsign_fix,
         bundle_name=args.bundle_name,
         icon_path=args.icon,
         patch_status_bar=(

@@ -522,10 +522,14 @@ class SignOrchestrator:
         # No need to update patcher's bundle mapper as it's already set during creation
 
         # Generate remappings.json if plugins patcher is enabled
-        if self.patching_options.inject_plugins_patcher:
+        if self.patching_options.inject_warpsign_fix:
             self.patcher.generate_remappings_json()
-            self.console.print("\n[blue]Enabled automatic conflict detection for plugin injection[/]")
-            self.console.print("[blue]Any existing pluginsinject.dylib references will be removed[/]")
+            self.console.print(
+                "\n[blue]Enabled automatic conflict detection for plugin injection[/]"
+            )
+            self.console.print(
+                "[blue]Any existing pluginsinject.dylib references will be removed[/]"
+            )
 
         self.console.print("\n[blue]Signing frameworks[/]")
         # Sort components to prioritize injected dylibs
@@ -671,9 +675,9 @@ class SignOrchestrator:
         # Create Frameworks directory if it doesn't exist
         frameworks_dir = app_dir / "Frameworks"
         frameworks_dir.mkdir(exist_ok=True)
-        
+
         # Check for potential conflicting dylibs in Frameworks directory
-        if self.patching_options.inject_plugins_patcher:
+        if self.patching_options.inject_warpsign_fix:
             conflicting_dylibs = [
                 "pluginsinject.dylib",
                 "sideloadFixerLol.dylib",
@@ -683,7 +687,7 @@ class SignOrchestrator:
                 "Plugins Inject.dylib",
                 "pluginsinjectnf.dylib",
             ]
-            
+
             for dylib in conflicting_dylibs:
                 conflicting_dylib = frameworks_dir / dylib
                 if conflicting_dylib.exists():
@@ -699,7 +703,7 @@ class SignOrchestrator:
         # Pathing is really fucky here.. probably need to fix this but it works for now.
 
         # Handle plugins dylib
-        if self.patching_options.inject_plugins_patcher:
+        if self.patching_options.inject_warpsign_fix:
             plugins_dylib = (
                 Path(__file__).parent.parent / "patches" / "WarpsignFix.dylib"
             )
@@ -712,13 +716,15 @@ class SignOrchestrator:
                 self.console.print(
                     f"[green]Copied {plugins_dylib.name} to Frameworks[/]"
                 )
-                
+
             # Also copy the UI dylib
             plugins_ui_dylib = (
                 Path(__file__).parent.parent / "patches" / "WarpsignFixUI.dylib"
             )
             if not plugins_ui_dylib.exists():
-                raise ValueError(f"Plugins UI patcher dylib not found: {plugins_ui_dylib}")
+                raise ValueError(
+                    f"Plugins UI patcher dylib not found: {plugins_ui_dylib}"
+                )
 
             target_ui_dylib = frameworks_dir / plugins_ui_dylib.name
             if not target_ui_dylib.exists():

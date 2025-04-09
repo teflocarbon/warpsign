@@ -56,7 +56,7 @@ class PatchingOptions:
     remove_url_schemes: bool = False  # Remove URL schemes registration
 
     # Plugins patcher
-    inject_plugins_patcher: bool = False  # Enable plugins patcher injection
+    inject_warpsign_fix: bool = False  # Enable plugins patcher injection
     hide_home_indicator: bool = False  # Hide home indicator on iPhone X and newer
 
 
@@ -96,11 +96,15 @@ class AppPatcher:
         )
 
         self.icon_handler = IconHandler()
-        if opts.inject_plugins_patcher:
+        if opts.inject_warpsign_fix:
             if not self.plugins_dylib.exists():
-                raise ValueError(f"Plugins patcher dylib not found: {self.plugins_dylib}")
+                raise ValueError(
+                    f"Plugins patcher dylib not found: {self.plugins_dylib}"
+                )
             if not self.plugins_ui_dylib.exists():
-                raise ValueError(f"Plugins UI patcher dylib not found: {self.plugins_ui_dylib}")
+                raise ValueError(
+                    f"Plugins UI patcher dylib not found: {self.plugins_ui_dylib}"
+                )
 
     def clean_app_bundle(self, app_dir: Path) -> None:
         """Remove unnecessary app bundle components"""
@@ -441,33 +445,35 @@ class AppPatcher:
         """
         Calculate path using @loader_path for more reliable dylib loading
         """
-        
+
         # @rpath isn't always present.
         # @executable_path has bullshit behavior.
         # # @loader_path is the most reliable.. somehow?
-        
+
         parts = binary_path.parts
-        app_index = next((i for i, part in enumerate(parts) if part.endswith('.app')), -1)
-        
+        app_index = next(
+            (i for i, part in enumerate(parts) if part.endswith(".app")), -1
+        )
+
         if app_index != -1:
-            app_dir = Path(*parts[:app_index+1])
+            app_dir = Path(*parts[: app_index + 1])
             binary_dir = binary_path.parent
             frameworks_dir = app_dir / "Frameworks"
-            
+
             # Calculate steps to Frameworks directory
             steps_back = len(binary_dir.parts) - len(frameworks_dir.parent.parts)
             relative_path = "../" * steps_back + "Frameworks"
-            
+
             # Use @loader_path instead of @executable_path
             dylib_path = f"@loader_path/{relative_path}/{dylib_name}"
-            
+
             # Debug logging
             self.console.log(f"[blue]Binary location:[/] {binary_dir}")
             self.console.log(f"[blue]Steps back:[/] {steps_back}")
             self.console.log(f"[green]Final dylib path:[/] {dylib_path}")
-            
+
             return dylib_path
-        
+
         self.console.log(f"[red]Could not find .app bundle in path:[/] {binary_path}")
         return None
 
@@ -496,15 +502,17 @@ class AppPatcher:
                 raise ValueError("Cannot modify encrypted binary")
             else:
                 self.console.log("[green]Binary is not encrypted, proceeding")
-            
+
             # Get the optimal dylib path
             dylib_path = self.get_dylib_path(binary_path, dylib_name)
-            
+
             if dylib_path is None:
-                self.console.log(f"[red]ERROR: Could not determine a valid path to {dylib_name} for {binary_path.name}[/]")
+                self.console.log(
+                    f"[red]ERROR: Could not determine a valid path to {dylib_name} for {binary_path.name}[/]"
+                )
                 self.console.log("[yellow]Skipping injection to avoid app crash[/]")
                 continue
-                
+
             self.console.log(f"[green]Using path:[/] {dylib_path}")
 
             # Add LC_LOAD_DYLIB command using the determined path
@@ -512,21 +520,23 @@ class AppPatcher:
 
         # Write modified binary
         parsed.write(str(binary_path))
-        self.console.log(f"[green]Injected {dylib_name} successfully with path {dylib_path}[/]")
+        self.console.log(
+            f"[green]Injected {dylib_name} successfully with path {dylib_path}[/]"
+        )
 
     def check_and_remove_conflicting_dylibs(self, binary_path: Path) -> bool:
         """Check for and remove conflicting dylibs in a binary"""
-        if not self.opts.inject_plugins_patcher:
+        if not self.opts.inject_warpsign_fix:
             return False  # No conflicts if we're not injecting our own plugins
 
         self.console.log(f"[blue]Checking for conflicting dylibs in:[/] {binary_path}")
-        
+
         # Parse binary
         parsed = MachO.parse(str(binary_path))
-        
+
         # Track whether we removed anything
         removed_dylibs = False
-        
+
         # List of known conflicting dylibs
         conflicting_dylibs = [
             "pluginsinject.dylib",
@@ -537,14 +547,14 @@ class AppPatcher:
             "Plugins Inject.dylib",
             "pluginsinjectnf.dylib",
         ]
-        
+
         # Handle fat binary
         if isinstance(parsed, MachO.FatBinary):
             self.console.log("[blue]Found Fat Binary - processing all architectures")
             binaries = [parsed.at(i) for i in range(parsed.size)]
         else:
             binaries = [parsed]
-        
+
         # Process each binary
         for binary in binaries:
             # Check if binary has conflicting dylibs
@@ -553,21 +563,25 @@ class AppPatcher:
                 if isinstance(command, lief.MachO.DylibCommand):
                     # Check if any of the conflicting dylib names are in the command's name
                     if any(dylib in command.name for dylib in conflicting_dylibs):
-                        self.console.log(f"[yellow]Found conflicting dylib: {command.name}[/]")
-                        self.console.log("[yellow]This conflicts with WarpsignFix.dylib and will be removed")
-                        
+                        self.console.log(
+                            f"[yellow]Found conflicting dylib: {command.name}[/]"
+                        )
+                        self.console.log(
+                            "[yellow]This conflicts with WarpsignFix.dylib and will be removed"
+                        )
+
                         # Remove the command at the found index
                         binary.remove_command(i)
                         removed_dylibs = True
                         break
-                
+
         # Write modified binary if changes were made
         if removed_dylibs:
             self.console.log("[green]Removed conflicting dylibs from binary")
             parsed.write(str(binary_path))
         else:
             self.console.log("[green]No conflicting dylibs found")
-            
+
         return removed_dylibs
 
     def patch_app_binary(
@@ -605,18 +619,18 @@ class AppPatcher:
                 self.patch_binary(app_binary, replacements)
 
         # Check for and remove conflicting dylibs before injecting our own
-        if self.opts.inject_plugins_patcher:
+        if self.opts.inject_warpsign_fix:
             self.check_and_remove_conflicting_dylibs(app_binary)
 
         # Inject plugins patcher dylib if enabled (into all binaries)
-        if self.opts.inject_plugins_patcher:
+        if self.opts.inject_warpsign_fix:
             dylib_name = self.plugins_dylib.name
             try:
                 self.inject_dylib_with_lief(app_binary, dylib_name)
             except Exception as e:
                 self.console.log(f"[red]Failed to inject plugins dylib: {e}[/]")
                 raise
-            
+
             # Inject UI dylib only into main binary
             if is_main_binary:
                 ui_dylib_name = self.plugins_ui_dylib.name
@@ -638,37 +652,35 @@ class AppPatcher:
 
     def generate_remappings_json(self) -> None:
         """Generate remappings.json file for plugins dylib"""
-        if not self.opts.inject_plugins_patcher or not self.bundle_mapper:
+        if not self.opts.inject_warpsign_fix or not self.bundle_mapper:
             return
-        
+
         self.console.log("[blue]Generating remappings.json for plugins dylib[/]")
-        
+
         remappings = {
             "keychainAccessGroups": [],
             "appGroups": [],
             "iCloudContainers": [],
-            "teamIds": []
+            "teamIds": [],
         }
-        
+
         # Add team ID mappings first
         for orig_team_id in self.bundle_mapper.original_team_ids:
-            if orig_team_id != self.bundle_mapper.team_id:  # Only add if they're different
-                remappings["teamIds"].append({
-                    "original": orig_team_id,
-                    "remapped": self.bundle_mapper.team_id
-                })
-        
+            if (
+                orig_team_id != self.bundle_mapper.team_id
+            ):  # Only add if they're different
+                remappings["teamIds"].append(
+                    {"original": orig_team_id, "remapped": self.bundle_mapper.team_id}
+                )
+
         # Extract all mappings from bundle_mapper
         for original_id, mapping in self.bundle_mapper.mappings.items():
             # Skip if original and new are the same
             if original_id == mapping.new_id:
                 continue
-                
-            mapping_entry = {
-                "original": original_id,
-                "remapped": mapping.new_id
-            }
-            
+
+            mapping_entry = {"original": original_id, "remapped": mapping.new_id}
+
             # Categorize by ID type
             if mapping.id_type == IDType.KEYCHAIN:
                 remappings["keychainAccessGroups"].append(mapping_entry)
@@ -676,25 +688,35 @@ class AppPatcher:
                 remappings["appGroups"].append(mapping_entry)
             elif mapping.id_type == IDType.ICLOUD:
                 remappings["iCloudContainers"].append(mapping_entry)
-        
+
         # Only write file if we have any remappings
         if any(remappings.values()):
             remappings_path = self.app_dir / "remappings.json"
             with open(remappings_path, "w") as f:
                 json.dump(remappings, f, indent=4)
-            
+
             # Count total mappings for all categories
             total_mappings = sum(len(v) for v in remappings.values())
-            self.console.log(f"[green]Created remappings.json with {total_mappings} total mappings[/]")
-            
+            self.console.log(
+                f"[green]Created remappings.json with {total_mappings} total mappings[/]"
+            )
+
             # Log specific counts for each type
             if remappings["teamIds"]:
                 self.console.log(f"[green]Team IDs: {len(remappings['teamIds'])}[/]")
             if remappings["keychainAccessGroups"]:
-                self.console.log(f"[green]Keychain groups: {len(remappings['keychainAccessGroups'])}[/]")
+                self.console.log(
+                    f"[green]Keychain groups: {len(remappings['keychainAccessGroups'])}[/]"
+                )
             if remappings["appGroups"]:
-                self.console.log(f"[green]App groups: {len(remappings['appGroups'])}[/]")
+                self.console.log(
+                    f"[green]App groups: {len(remappings['appGroups'])}[/]"
+                )
             if remappings["iCloudContainers"]:
-                self.console.log(f"[green]iCloud containers: {len(remappings['iCloudContainers'])}[/]")
+                self.console.log(
+                    f"[green]iCloud containers: {len(remappings['iCloudContainers'])}[/]"
+                )
         else:
-            self.console.log("[yellow]No remappings found, skipping remappings.json creation[/]")
+            self.console.log(
+                "[yellow]No remappings found, skipping remappings.json creation[/]"
+            )
