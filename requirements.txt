@@ -7,3 +7,4 @@ pillow
 toml
 flask
 jinja2
+PyNaCl
