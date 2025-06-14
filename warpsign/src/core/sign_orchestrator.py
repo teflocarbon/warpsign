@@ -22,6 +22,7 @@ from warpsign.src.core.bundle_mapper import BundleMapping, IDType
 from warpsign.src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
 from warpsign.src.utils.config_loader import get_apple_credentials, get_session_dir
 from warpsign.logger import get_console
+from warpsign.src.constants.conflicts import CONFLICTING_DYLIBS
 
 
 class SignOrchestrator:
@@ -678,17 +679,7 @@ class SignOrchestrator:
 
         # Check for potential conflicting dylibs in Frameworks directory
         if self.patching_options.inject_warpsign_fix:
-            conflicting_dylibs = [
-                "pluginsinject.dylib",
-                "sideloadFixerLol.dylib",
-                "sideloadKeychainfix.dylib",
-                "ExtensionFix.dylib",
-                "Widget Extension Fix.dylib",
-                "Plugins Inject.dylib",
-                "pluginsinjectnf.dylib",
-            ]
-
-            for dylib in conflicting_dylibs:
+            for dylib in CONFLICTING_DYLIBS:
                 conflicting_dylib = frameworks_dir / dylib
                 if conflicting_dylib.exists():
                     self.console.print(

@@ -14,6 +14,7 @@ import os
 
 from warpsign.src.utils.icon_handler import IconHandler
 from warpsign.src.core.bundle_mapper import BundleMapping, IDType
+from warpsign.src.constants.conflicts import CONFLICTING_DYLIBS
 
 
 class StatusBarStyle(Enum):
@@ -537,17 +538,6 @@ class AppPatcher:
         # Track whether we removed anything
         removed_dylibs = False
 
-        # List of known conflicting dylibs
-        conflicting_dylibs = [
-            "pluginsinject.dylib",
-            "sideloadFixerLol.dylib",
-            "sideloadKeychainfix.dylib",
-            "ExtensionFix.dylib",
-            "Widget Extension Fix.dylib",
-            "Plugins Inject.dylib",
-            "pluginsinjectnf.dylib",
-        ]
-
         # Handle fat binary
         if isinstance(parsed, MachO.FatBinary):
             self.console.log("[blue]Found Fat Binary - processing all architectures")
@@ -562,7 +552,7 @@ class AppPatcher:
                 # Check if it's a dylib command using command type comparison
                 if isinstance(command, lief.MachO.DylibCommand):
                     # Check if any of the conflicting dylib names are in the command's name
-                    if any(dylib in command.name for dylib in conflicting_dylibs):
+                    if any(dylib in command.name for dylib in CONFLICTING_DYLIBS):
                         self.console.log(
                             f"[yellow]Found conflicting dylib: {command.name}[/]"
                         )
