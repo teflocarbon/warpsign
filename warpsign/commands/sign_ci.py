@@ -199,6 +199,7 @@ def handle_workflow_execution(
         # Create variables needed for croc transfer
         use_croc = workflow_inputs.get("use_croc") == "true"
         croc_code = workflow_inputs.get("ipa_url") if use_croc else None
+        croc_port = int(workflow_inputs.get("croc_port", 0)) if use_croc else None
         signed_ipa_path = None
 
         # Create step callbacks dictionary for the workflow monitoring
@@ -223,7 +224,7 @@ def handle_workflow_execution(
                     temp_dir.mkdir(parents=True, exist_ok=True)
 
                     # Create the receiver and receive the file
-                    croc_receiver = CrocHandler(code=croc_code)
+                    croc_receiver = CrocHandler(code=croc_code, port=croc_port)
                     console.print(
                         f"[bold blue]Receiving signed IPA with code: [green]{croc_code}[/][/]"
                     )
@@ -399,6 +400,7 @@ def main(parsed_args=None) -> int:
             # Create croc handler and start upload in background
             croc_handler = CrocHandler()
             transfer_code = croc_handler.upload(Path(args.ipa_path))
+            croc_port = croc_handler.port  # Store the unique port being used
             ipa_url = transfer_code  # For croc, the URL is the code
 
             console.print(
@@ -419,6 +421,9 @@ def main(parsed_args=None) -> int:
             "signing_args": build_signing_args(args),
             "apple_id": apple_id,
             "use_croc": str(use_croc).lower(),  # Send as "true" or "false" string
+            "croc_port": (
+                str(croc_port) if use_croc else ""
+            ),  # Pass the port to the workflow
         }
 
         try:

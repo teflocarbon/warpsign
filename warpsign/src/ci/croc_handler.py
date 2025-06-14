@@ -3,7 +3,10 @@ import shutil
 import subprocess
 import uuid
 import time
+import random
+import socket
 from pathlib import Path
+from typing import Optional
 
 from warpsign.logger import get_console
 
@@ -11,18 +14,41 @@ console = get_console()
 
 
 class CrocHandler:
-    """Handler for croc file transfers with support for both sending and receiving."""
+    """Handler for croc file transfers with support for both sending and receiving.
 
-    def __init__(self, code=None):
-        """Initialize the croc handler with a unique code.
+    A unique relay port is required for each croc transfer.  We reserve a port from
+    a predefined range and keep track of ports currently in use via a simple text file
+    at ``~/.warpsign/used_ports.txt``.  This prevents multiple concurrent transfers
+    on the same machine from attempting to bind to the same relay port.
+    """
+
+    # Range of ports to allocate from (inclusive)
+    PORT_RANGE = (9000, 9999)
+
+    # File used to persist the list of ports currently in use
+    USED_PORTS_FILE = Path.home() / ".warpsign" / "used_ports.txt"
+
+    def __init__(self, code: "Optional[str]" = None, port: "Optional[int]" = None):
+        """Initialize the croc handler.
 
         Args:
-            code: Optional croc code to use. If None, a new code will be generated.
+            code: Optional croc code to use. If ``None`` a new code will be generated.
+            port: Optional relay port to use. If ``None`` we will reserve a free port.
         """
-        # Generate a memorable code that's easy to type, or use provided code
+
+        # Generate a memorable code that's easy to type, or use the provided code
         self.code = code or f"warpsign-{uuid.uuid4().hex}"
-        self.process = None
-        self.env = None
+
+        # Reserve a port if one hasn't been supplied
+        if port is None:
+            self.port = self._reserve_port()
+            self._port_reserved = True
+        else:
+            self.port = port
+            self._port_reserved = False
+
+        self.process: "Optional[subprocess.Popen]" = None
+        self.env: "Optional[dict]" = None
 
     @staticmethod
     def is_installed() -> bool:
@@ -52,7 +78,7 @@ class CrocHandler:
         self.env["CROC_SECRET"] = self.code
 
         # Start croc in the foreground with real-time output
-        command = ["croc", "send", str(file_path)]
+        command = ["croc", "send", "--port", str(self.port), str(file_path)]
 
         console.print(f"[dim]Running: {' '.join(command)}[/]")
         console.print("[green]Starting file transfer - logs will appear below:[/]")
@@ -96,7 +122,7 @@ class CrocHandler:
         self.env["CROC_SECRET"] = self.code
 
         # Build the command
-        command = ["croc", "--yes"]
+        command = ["croc", "--debug", "--yes"]
         if output_dir:
             output_dir.mkdir(parents=True, exist_ok=True)
             command.extend(["--out", str(output_dir)])
@@ -155,6 +181,14 @@ class CrocHandler:
                 console.print("[red]Force killing croc process...[/]")
                 self.process.kill()
 
+        # Release the reserved port (if we allocated it)
+        if getattr(self, "_port_reserved", False):
+            try:
+                self._release_port(self.port)
+            except Exception:
+                # Failure to release is non-fatal – log and continue
+                console.print("[yellow]Warning: failed to release croc port[/]")
+
     def stream_output(self):
         """Stream the output from the croc process to the console."""
         if not self.process:
@@ -171,3 +205,66 @@ class CrocHandler:
 
             # Sleep a bit to avoid hogging CPU
             time.sleep(0.1)
+
+    # ---------------------------------------------------------------------
+    # Port reservation helpers
+    # ---------------------------------------------------------------------
+
+    @classmethod
+    def _load_used_ports(cls) -> set[int]:
+        """Load the set of ports currently marked as used."""
+        if not cls.USED_PORTS_FILE.exists():
+            return set()
+        try:
+            with cls.USED_PORTS_FILE.open("r", encoding="utf-8") as f:
+                return {int(line.strip()) for line in f if line.strip().isdigit()}
+        except Exception:
+            return set()
+
+    @classmethod
+    def _save_used_ports(cls, ports: set[int]):
+        """Persist the supplied *ports* set back to the used ports file."""
+        cls.USED_PORTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with cls.USED_PORTS_FILE.open("w", encoding="utf-8") as f:
+            for p in sorted(ports):
+                f.write(f"{p}\n")
+
+    @classmethod
+    def _is_port_open(cls, port: int) -> bool:
+        """Check whether *port* is open (i.e. already bound) on localhost."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.5)
+            return sock.connect_ex(("127.0.0.1", port)) == 0
+
+    @classmethod
+    def _reserve_port(cls) -> int:
+        """Reserve and return a free port within ``PORT_RANGE``.
+
+        The chosen port is recorded in ``USED_PORTS_FILE`` in order to avoid
+        collisions with other processes also using :pyclass:`CrocHandler`.
+        """
+        used_ports = cls._load_used_ports()
+
+        attempts = 0
+        max_attempts = (cls.PORT_RANGE[1] - cls.PORT_RANGE[0]) + 1
+        while attempts < max_attempts:
+            port = random.randint(*cls.PORT_RANGE)
+            attempts += 1
+
+            if port in used_ports or cls._is_port_open(port):
+                continue
+
+            # Mark as used and persist
+            used_ports.add(port)
+            cls._save_used_ports(used_ports)
+            return port
+
+        raise RuntimeError("Could not find a free port for croc")
+
+    @classmethod
+    def _release_port(cls, port: int):
+        """Release *port* back to the pool of free ports."""
+        used_ports = cls._load_used_ports()
+        if port in used_ports:
+            used_ports.remove(port)
+            cls._save_used_ports(used_ports)
