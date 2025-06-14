@@ -64,7 +64,37 @@ def run_process(
 def codesign_dump_entitlements(executable: str) -> Dict[Any, Any]:
     """Dump entitlements from binary using ldid"""
     proc = run_process("ldid", "-e", executable)
-    return plistlib.loads(proc.stdout.encode()) if proc.stdout else {}
+    stdout = proc.stdout.strip()
+
+    if not stdout:
+        return {}
+
+    # Handle cases where ldid might output multiple concatenated plists, which happens for some bizarre reason.
+    # Find the start of the first plist
+    plist_start = stdout.find("<?xml")
+    if plist_start == -1:
+        print(f"Warning: No XML declaration found in ldid output for {executable}")
+        return {}
+
+    # Find the end of the first plist document
+    plist_end = stdout.find("</plist>")
+    if plist_end == -1:
+        print(f"Warning: No closing </plist> tag found in ldid output for {executable}")
+        return {}
+
+    # Extract the first plist string
+    first_plist_str = stdout[plist_start : plist_end + len("</plist>")]
+
+    try:
+        # Parse only the first plist found
+        return plistlib.loads(first_plist_str.encode())
+    except plistlib.InvalidFileException as e:
+        print(f"Warning: Failed to parse plist from ldid output for {executable}: {e}")
+        return {}
+    except Exception as e:
+        # Catch other potential parsing errors
+        print(f"Warning: Unexpected error parsing plist for {executable}: {e}")
+        return {}
 
 
 def is_valid_team_id(team_id: str) -> bool:
