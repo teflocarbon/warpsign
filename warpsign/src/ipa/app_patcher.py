@@ -624,12 +624,18 @@ class AppPatcher:
 
         # Inject plugins patcher dylib if enabled (into all binaries)
         if self.opts.inject_warpsign_fix:
-            dylib_name = self.plugins_dylib.name
-            try:
-                self.inject_dylib_with_lief(app_binary, dylib_name)
-            except Exception as e:
-                self.console.log(f"[red]Failed to inject plugins dylib: {e}[/]")
-                raise
+            # Skip injection if the target is already a dylib
+            if app_binary.suffix == ".dylib":
+                self.console.log(
+                    f"[yellow]Skipping dylib injection into {app_binary.name} as it is a dylib itself[/]"
+                )
+            else:
+                dylib_name = self.plugins_dylib.name
+                try:
+                    self.inject_dylib_with_lief(app_binary, dylib_name)
+                except Exception as e:
+                    self.console.log(f"[red]Failed to inject plugins dylib: {e}[/]")
+                    raise
 
             # Inject UI dylib only into main binary
             if is_main_binary:
