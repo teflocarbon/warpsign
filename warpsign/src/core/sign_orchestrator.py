@@ -22,6 +22,7 @@ from warpsign.src.core.bundle_mapper import BundleMapping, IDType
 from warpsign.src.utils.diff_helper import print_json_diff, plist_to_diffable_dict
 from warpsign.src.utils.config_loader import get_apple_credentials, get_session_dir
 from warpsign.logger import get_console
+from warpsign.src.constants.conflicts import CONFLICTING_DYLIBS
 
 
 class SignOrchestrator:
@@ -521,13 +522,24 @@ class SignOrchestrator:
         """Sign all components with proper entitlements using the single bundle mapper"""
         # No need to update patcher's bundle mapper as it's already set during creation
 
+        # Generate remappings.json if plugins patcher is enabled
+        if self.patching_options.inject_warpsign_fix:
+            self.patcher.generate_remappings_json()
+            self.console.print(
+                "\n[blue]Enabled automatic conflict detection for plugin injection[/]"
+            )
+            self.console.print(
+                "[blue]Any existing pluginsinject.dylib references will be removed[/]"
+            )
+
         self.console.print("\n[blue]Signing frameworks[/]")
         # Sort components to prioritize injected dylibs
         framework_components = [c for c in components if not c.is_primary]
 
         # Define known dylibs
         KNOWN_DYLIBS = {
-            "pluginsinject.dylib": "plugins dylib",
+            "WarpsignFix.dylib": "plugins dylib",
+            "WarpsignFixUI.dylib": "plugins UI dylib",
             "ForceHideHomeIndicator.dylib": "home indicator dylib",
         }
 
@@ -665,12 +677,26 @@ class SignOrchestrator:
         frameworks_dir = app_dir / "Frameworks"
         frameworks_dir.mkdir(exist_ok=True)
 
+        # Check for potential conflicting dylibs in Frameworks directory
+        if self.patching_options.inject_warpsign_fix:
+            for dylib in CONFLICTING_DYLIBS:
+                conflicting_dylib = frameworks_dir / dylib
+                if conflicting_dylib.exists():
+                    self.console.print(
+                        f"[yellow]⚠️ Warning: Found conflicting {dylib} in Frameworks directory"
+                    )
+                    self.console.print(
+                        f"[yellow]This dylib conflicts with WarpsignFix.dylib and will be removed"
+                    )
+                    conflicting_dylib.unlink()
+                    self.console.print(f"[green]Removed conflicting {dylib}")
+
         # Pathing is really fucky here.. probably need to fix this but it works for now.
 
         # Handle plugins dylib
-        if self.patching_options.inject_plugins_patcher:
+        if self.patching_options.inject_warpsign_fix:
             plugins_dylib = (
-                Path(__file__).parent.parent / "patches" / "pluginsinject.dylib"
+                Path(__file__).parent.parent / "patches" / "WarpsignFix.dylib"
             )
             if not plugins_dylib.exists():
                 raise ValueError(f"Plugins patcher dylib not found: {plugins_dylib}")
@@ -680,6 +706,22 @@ class SignOrchestrator:
                 shutil.copy2(plugins_dylib, target_dylib)
                 self.console.print(
                     f"[green]Copied {plugins_dylib.name} to Frameworks[/]"
+                )
+
+            # Also copy the UI dylib
+            plugins_ui_dylib = (
+                Path(__file__).parent.parent / "patches" / "WarpsignFixUI.dylib"
+            )
+            if not plugins_ui_dylib.exists():
+                raise ValueError(
+                    f"Plugins UI patcher dylib not found: {plugins_ui_dylib}"
+                )
+
+            target_ui_dylib = frameworks_dir / plugins_ui_dylib.name
+            if not target_ui_dylib.exists():
+                shutil.copy2(plugins_ui_dylib, target_ui_dylib)
+                self.console.print(
+                    f"[green]Copied {plugins_ui_dylib.name} to Frameworks[/]"
                 )
 
         # Handle home indicator dylib
