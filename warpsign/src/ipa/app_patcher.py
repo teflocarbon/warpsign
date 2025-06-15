@@ -56,6 +56,9 @@ class PatchingOptions:
     patch_user_interface_style: UIStyle = UIStyle.AUTOMATIC  # Force UI style
     remove_url_schemes: bool = False  # Remove URL schemes registration
 
+    # Liquid Glass patch
+    patch_liquid_glass: bool = False  # Force Liquid Glass build metadata
+
     # Plugins patcher
     inject_warpsign_fix: bool = False  # Enable plugins patcher injection
     hide_home_indicator: bool = False  # Hide home indicator on iPhone X and newer
@@ -574,6 +577,52 @@ class AppPatcher:
 
         return removed_dylibs
 
+    # This is for Liquid Glass.
+    def patch_build_version(self, binary_path: Path) -> None:
+        """Force LC_BUILD_VERSION to iOS platform with minos 12.0 and SDK 26.0 (Liquid Glass)"""
+
+        self.console.log(f"[blue]Patching BuildVersion command in:[/] {binary_path}")
+
+        parsed = MachO.parse(str(binary_path))
+
+        # Handle fat vs thin binaries
+        if isinstance(parsed, MachO.FatBinary):
+            binaries = [parsed.at(i) for i in range(parsed.size)]
+        else:
+            binaries = [parsed]
+
+        for binary in binaries:
+            if not binary.has_build_version:
+                self.console.log("[yellow]No LC_BUILD_VERSION found, skipping[/]")
+                continue
+
+            build_ver = binary.build_version
+
+            # Log previous values for transparency
+            old_minos = ".".join(map(str, build_ver.minos))
+            old_sdk = ".".join(map(str, build_ver.sdk))
+
+            # Update values to iOS 12.0 and iOS 26.0
+            build_ver.minos = (12, 0, 0)
+            build_ver.sdk = (26, 0, 0)
+
+            # Ensure platform is iOS (value 2) if not already
+            try:
+                import lief
+
+                if build_ver.platform != lief.MachO.BuildVersion.PLATFORMS.IOS:
+                    build_ver.platform = lief.MachO.BuildVersion.PLATFORMS.IOS
+            except Exception:
+                # Platform update is best-effort. Continue even if not supported.
+                pass
+
+            self.console.log(
+                f"[green]BuildVersion updated (minos {old_minos} -> 12.0, sdk {old_sdk} -> 26.0)[/]"
+            )
+
+        # Write back modified binary (this rebuilds fat if needed)
+        parsed.write(str(binary_path))
+
     def patch_app_binary(
         self,
         app_binary: Path,
@@ -645,6 +694,13 @@ class AppPatcher:
             except Exception as e:
                 self.console.log(f"[red]Failed to inject home indicator dylib: {e}[/]")
                 raise
+
+        # Apply Liquid Glass build_version patch only to the main binary
+        if is_main_binary and self.opts.patch_liquid_glass:
+            try:
+                self.patch_build_version(app_binary)
+            except Exception as e:
+                self.console.log(f"[red]Failed to patch build_version: {e}[/]")
 
     def generate_remappings_json(self) -> None:
         """Generate remappings.json file for plugins dylib"""

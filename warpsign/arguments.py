@@ -98,9 +98,15 @@ def add_signing_arguments(parser):
     )
 
     parser.add_argument(
+        "--patch-liquid-glass",
+        action="store_true",
+        help="Force Liquid Glass build metadata (iOS 26.0+) (may cause issues) [default: disabled]",
+    )
+
+    parser.add_argument(
         "--hide-home-indicator",
         action="store_true",
-        help="Hide home indicator on iPhone X and newer devices [default: disabled]",
+        help="Hide home indicator on iPhone X and newer devices (may cause issues) [default: disabled]",
     )
 
     parser.add_argument(
@@ -149,6 +155,7 @@ def create_patching_options(args) -> PatchingOptions:
         patch_game_mode=args.patch_game_mode,
         hide_home_indicator=args.hide_home_indicator,
         inject_warpsign_fix=args.inject_warpsign_fix,
+        patch_liquid_glass=args.patch_liquid_glass,
         bundle_name=args.bundle_name,
         icon_path=args.icon,
         patch_status_bar=(
