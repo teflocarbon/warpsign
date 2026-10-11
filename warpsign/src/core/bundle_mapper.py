@@ -240,6 +240,14 @@ class BundleMapping:
         ]:
             self._process_list_entitlement(result, key, IDType.ICLOUD)
 
+        # Wallet pass type IDs start with a team ID ("TEAMID.*" or
+        # "TEAMID.pass.example"); the profile only grants this team's
+        pass_types = result.get("com.apple.developer.pass-type-identifiers")
+        if isinstance(pass_types, list):
+            result["com.apple.developer.pass-type-identifiers"] = [
+                self._with_this_team(value) for value in pass_types
+            ]
+
         # Handle ubiquity-kvstore-identifier
         if "com.apple.developer.ubiquity-kvstore-identifier" in result:
             kvstore_id = result["com.apple.developer.ubiquity-kvstore-identifier"]
@@ -259,6 +267,14 @@ class BundleMapping:
                 )
 
         return result
+
+    def _with_this_team(self, value):
+        """value with an original team ID prefix moved to this team"""
+        if isinstance(value, str) and "." in value:
+            prefix, rest = value.split(".", 1)
+            if prefix in self.original_team_ids:
+                return f"{self.team_id}.{rest}"
+        return value
 
     def get_binary_patches(self) -> Dict[str, str]:
         """Get all mappings that need binary patching"""
