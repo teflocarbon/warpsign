@@ -9,6 +9,7 @@ import getpass
 import http.cookiejar as cookielib
 import re
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 from datetime import datetime, timezone
 from warpsign.logger import get_console
 from warpsign.src.utils.config_loader import get_session_dir, get_apple_credentials
@@ -59,11 +60,43 @@ class AppleDeveloperAuth:
     @property
     def widget_key(self) -> str:
         if not self._widget_key:
-            response = self.session.get(
-                "https://appstoreconnect.apple.com/olympus/v1/app/config?hostname=itunesconnect.apple.com"
+            self._widget_key = (
+                self._widget_key_from_sign_out() or self._widget_key_from_config()
             )
-            self._widget_key = response.json().get("authServiceKey", "")
         return self._widget_key
+
+    def _widget_key_from_sign_out(self) -> str:
+        """Read the key from the sign-out redirect, as fastlane 2.240 does.
+
+        Apple retired the Olympus config endpoint in September 2026, so this
+        is now the main source. Best effort: any failure falls back to it.
+        """
+        try:
+            # A fresh request, not self.session: no cookies, no redirects
+            response = requests.head(
+                "https://appstoreconnect.apple.com/logout",
+                allow_redirects=False,
+                timeout=30,
+            )
+        except requests.RequestException:
+            return ""
+        query = urlparse(response.headers.get("Location", "")).query
+        return parse_qs(query).get("widgetKey", [""])[0]
+
+    def _widget_key_from_config(self) -> str:
+        """The original source, which now returns 404; kept as a fallback"""
+        response = self.session.get(
+            "https://appstoreconnect.apple.com/olympus/v1/app/config?hostname=itunesconnect.apple.com"
+        )
+        try:
+            key = response.json().get("authServiceKey", "")
+        except ValueError:
+            key = ""
+        if not key:
+            raise Exception(
+                f"Couldn't get the sign-in service key from App Store Connect (HTTP {response.status_code})"
+            )
+        return key
 
     @property
     def cookiejar_path(self) -> str:
