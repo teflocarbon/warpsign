@@ -40,17 +40,17 @@ class EntitlementsProcessor:
         profile_keys = []
 
         # Check direct entitlements
-        for entitlement in capability_data.get("attributes", {}).get(
-            "entitlements", []
-        ):
+        # Apple sends null rather than leaving out empty lists, so `or []`
+        attributes = capability_data.get("attributes") or {}
+        for entitlement in attributes.get("entitlements") or []:
             if profile_key := entitlement.get("profileKey"):
                 profile_keys.append(profile_key)
 
         # Check settings and their options
-        for setting in capability_data.get("attributes", {}).get("settings", []):
+        for setting in attributes.get("settings") or []:
             # Check each option's entitlements
-            for option in setting.get("options", []):
-                for entitlement in option.get("entitlements", []):
+            for option in setting.get("options") or []:
+                for entitlement in option.get("entitlements") or []:
                     if profile_key := entitlement.get("profileKey"):
                         profile_keys.append(profile_key)
 
@@ -66,7 +66,7 @@ class EntitlementsProcessor:
             # Only include iOS capabilities that support our profile type
             supports_ios = any(
                 sdk.get("displayValue") == "iOS"
-                for sdk in attributes.get("supportedSDKs", [])
+                for sdk in attributes.get("supportedSDKs") or []
             )
 
             # Check if capability supports our profile type
@@ -79,7 +79,7 @@ class EntitlementsProcessor:
                     self.profile_type == "adhoc"
                     and dist.get("displayValue") == "Ad hoc"
                 )
-                for dist in attributes.get("distributionTypes", [])
+                for dist in attributes.get("distributionTypes") or []
             )
 
             if supports_ios and supports_profile_type:
