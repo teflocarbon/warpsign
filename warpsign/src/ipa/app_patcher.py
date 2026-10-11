@@ -182,16 +182,15 @@ class AppPatcher:
             # Handle bundle identifier
             if "CFBundleIdentifier" in info:
                 old_bundle_id = info["CFBundleIdentifier"]
-                id_type = bundle_mapper.detect_id_type(old_bundle_id)
 
-                if id_type == IDType.BUNDLE and self.opts.force_original_id:
+                if self.opts.force_original_id:
                     self.console.log(
                         "[yellow]Keeping original bundle identifier in Info.plist"
                     )
                     if is_main_app:
                         self.main_bundle_id = old_bundle_id
                 else:
-                    new_bundle_id = bundle_mapper.map_id(old_bundle_id, id_type)
+                    new_bundle_id = bundle_mapper.map_bundle_id(old_bundle_id)
                     info["CFBundleIdentifier"] = new_bundle_id
                     if is_main_app:
                         self.main_bundle_id = new_bundle_id

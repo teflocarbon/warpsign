@@ -34,7 +34,6 @@ class BundleMapping:
         self.original_main_bundle_id = original_base_id
         self.encode_ids = randomize
         self.mappings: Dict[str, IDMapping] = {}
-        self.id_type_cache: Dict[str, IDType] = {}  # Cache for ID types
         self.force_original_id = False  # Track if we're using original IDs
         # Cache for random ID generation to avoid duplicating work
         self.random_id_cache: Dict[str, str] = {}
@@ -53,9 +52,8 @@ class BundleMapping:
         self._store_mapping(original_base_id, self.main_bundle_id, IDType.BUNDLE)
 
     def _store_mapping(self, original_id: str, new_id: str, id_type: IDType) -> None:
-        """Store mapping and cache ID type"""
+        """Store mapping"""
         self.mappings[original_id] = IDMapping(original_id, new_id, id_type)
-        self.id_type_cache[original_id] = id_type
 
     def _get_team_id_match(self, id_str: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -66,46 +64,6 @@ class BundleMapping:
             if id_str.startswith(orig_team_id):
                 return orig_team_id, id_str[len(orig_team_id) :]
         return None, None
-
-    def detect_id_type(self, id_str: str, entitlements: Dict = None) -> IDType:
-        """Determine the type of identifier with caching"""
-        if id_str in self.id_type_cache:
-            return self.id_type_cache[id_str]
-
-        # Check if this ID is in keychain access groups entitlement
-        if entitlements and "keychain-access-groups" in entitlements:
-            keychain_groups = entitlements["keychain-access-groups"]
-            if isinstance(keychain_groups, list) and id_str in keychain_groups:
-                self.id_type_cache[id_str] = IDType.KEYCHAIN
-                return IDType.KEYCHAIN
-
-        # Check if this appears in iCloud container entitlements
-        if entitlements:
-            for icloud_key in [
-                "com.apple.developer.icloud-container-identifiers",
-                "com.apple.developer.ubiquity-container-identifiers",
-                "com.apple.developer.icloud-container-development-container-identifiers",
-            ]:
-                if icloud_key in entitlements:
-                    containers = entitlements[icloud_key]
-                    if isinstance(containers, list) and id_str in containers:
-                        self.id_type_cache[id_str] = IDType.ICLOUD
-                        return IDType.ICLOUD
-
-        # Standard prefix checks
-        if id_str.startswith("iCloud."):
-            id_type = IDType.ICLOUD
-        elif "icloud" in id_str.lower():
-            id_type = IDType.ICLOUD
-        elif id_str.startswith("group."):
-            id_type = IDType.APP_GROUP
-        elif "application-groups" in id_str:
-            id_type = IDType.APP_GROUP
-        else:
-            id_type = IDType.BUNDLE
-
-        self.id_type_cache[id_str] = id_type
-        return id_type
 
     def gen_random_id(self, original_id: str) -> str:
         """Generate random ID maintaining exact length of each part with caching"""
@@ -229,9 +187,8 @@ class BundleMapping:
         return new_id
 
     def map_bundle_id(self, original_id: str) -> str:
-        """Public method to map any bundle identifier"""
-        id_type = self.detect_id_type(original_id)
-        return self.map_id(original_id, id_type)
+        """Map a bundle identifier (CFBundleIdentifier of the app or an extension)"""
+        return self.map_id(original_id, IDType.BUNDLE)
 
     def map_entitlements(
         self,
@@ -345,7 +302,7 @@ class BundleMapping:
             groups = entitlements["com.apple.security.application-groups"]
             if isinstance(groups, list):
                 for group in groups:
-                    mapped_group = self.map_bundle_id(group)
+                    mapped_group = self.map_id(group, IDType.APP_GROUP)
                     app_groups.add(mapped_group)
 
         # Extract iCloud containers
@@ -358,8 +315,6 @@ class BundleMapping:
                 containers = entitlements[key]
                 if isinstance(containers, list):
                     for container in containers:
-                        # Set the ID type explicitly to ICLOUD to ensure proper mapping
-                        self.id_type_cache[container] = IDType.ICLOUD
                         mapped_container = self.map_id(container, IDType.ICLOUD)
                         icloud_containers.add(mapped_container)
 
