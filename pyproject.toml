@@ -19,7 +19,17 @@ dependencies = [
     "rich-argparse",
     "flask",
     "jinja2",
+    "PyNaCl",
 ]
 
 [project.scripts]
 warpsign = "warpsign.cli:main"
+
+[tool.setuptools.package-data]
+"warpsign.src" = ["patches/*.dylib"]
+"warpsign.src.constants" = ["config.toml.sample"]
+"warpsign.src.utils.web.certificate" = [
+    "templates/*.html",
+    "static/css/*.css",
+    "static/js/*.js",
+]
