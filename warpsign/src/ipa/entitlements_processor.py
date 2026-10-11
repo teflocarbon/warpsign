@@ -21,6 +21,8 @@ class EntitlementsProcessor:
         """Initialize with API data or path to capabilities.json"""
         self.console = get_console()
         self.capabilities: Dict[str, Capability] = {}  # entitlement key -> capability
+        # entitlement key -> whether its capability must be requested from Apple
+        self._request_only: Dict[str, bool] = {}
         self.profile_type = profile_type.lower()
 
         if self.profile_type not in ["development", "adhoc"]:
@@ -87,8 +89,17 @@ class EntitlementsProcessor:
                 profile_keys = self._extract_profile_keys(capability)
 
                 if profile_keys:
+                    # Some capabilities are only granted on request from Apple
+                    # (canRequestFromPortal), e.g. Family Controls
+                    # (Distribution), which offers the same key as Family
+                    # Controls. Prefer one that needs no request; among
+                    # equals the last listed wins.
+                    request_only = attributes.get("canRequestFromPortal") is True
                     # Map each profile key to this capability
                     for key in profile_keys:
+                        if request_only and self._request_only.get(key) is False:
+                            continue
+                        self._request_only[key] = request_only
                         self.capabilities[key] = Capability(
                             id=cap_id,
                             name=attributes.get("name", ""),
