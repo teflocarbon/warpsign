@@ -32,6 +32,7 @@ class CertHandler:
 
         self.dist_cert: Optional[Path] = None
         self.keychain: Optional[str] = None
+        self._original_keychains: Optional[List[str]] = None
         self.signing_identity: Optional[str] = None
         self.cert_serial: Optional[str] = None
         self.cert_common_name: Optional[str] = None
@@ -52,7 +53,11 @@ class CertHandler:
             raise Exception(f"Certificate password file not found: {cert_pass_file}")
 
         self._load_certs()
-        self._setup_keychain()
+        try:
+            self._setup_keychain()
+        except BaseException:
+            self.cleanup()
+            raise
 
     def _load_certs(self) -> None:
         """Load certificates from specified directory"""
@@ -79,6 +84,8 @@ class CertHandler:
         self.console.log("[yellow]Getting existing keychains...")
         keychains = self._get_keychain_list()
         self.console.log(f"[blue]Found keychains:[/] {keychains}")
+        # Remember the user's search list so cleanup can restore it exactly
+        self._original_keychains = [k for k in keychains if "warpsign-" not in k]
 
         # Create new keychain
         self.console.log(f"[yellow]Creating keychain: {self.keychain}")
@@ -180,21 +187,8 @@ class CertHandler:
                 f"[red]Partition list setup failed:[/]\nstdout: {partition_result.stdout}\nstderr: {partition_result.stderr}"
             )
 
-        # Add to search list
+        # Put our keychain first in the search list, keeping the user's keychains after it
         self.console.log(f"[yellow]Adding to keychain search list: {self.keychain}")
-        keychains.append(self.keychain)
-        search_result = subprocess.run(
-            ["security", "list-keychains", "-d", "user", "-s", *keychains],
-            capture_output=True,
-            text=True,
-        )
-        if search_result.returncode != 0:
-            self.console.log(
-                f"[red]Search list update failed:[/]\nstdout: {search_result.stdout}\nstderr: {search_result.stderr}"
-            )
-
-        # Update keychain list with both the new keychain and login.keychain
-        self.console.log("[yellow]Updating keychain list")
         subprocess.run(
             [
                 "security",
@@ -203,7 +197,7 @@ class CertHandler:
                 "user",
                 "-s",
                 self.keychain,
-                "login.keychain",
+                *self._original_keychains,
             ],
             check=True,
             capture_output=True,
@@ -336,9 +330,13 @@ class CertHandler:
             return
 
         try:
-            # Remove from search list
-            keychains = self._get_keychain_list()
-            keychains = [k for k in keychains if self.keychain not in k]
+            # Restore the user's original search list
+            if self._original_keychains is not None:
+                keychains = self._original_keychains
+            else:
+                keychains = [
+                    k for k in self._get_keychain_list() if self.keychain not in k
+                ]
             subprocess.run(
                 ["security", "list-keychains", "-d", "user", "-s", *keychains]
             )
@@ -348,6 +346,8 @@ class CertHandler:
             self.console.log("[green]Cleaned up keychain[/]")
         except Exception as e:
             self.console.log(f"[red]Error during keychain cleanup:[/] {e}")
+        finally:
+            self.keychain = None
 
     def _get_keychain_list(self) -> List[str]:
         """Get list of current keychains"""

@@ -40,7 +40,15 @@ class SignOrchestrator:
         # Initialize cert handler with configuration
         self.cert_handler = CertHandler(cert_type=cert_type, cert_dir=cert_dir)
 
-        # Rest of initialization based on certificate type
+        # Remove the temporary keychain if anything below fails (including sys.exit)
+        try:
+            self._init_after_keychain()
+        except BaseException:
+            self.cert_handler.cleanup()
+            raise
+
+    def _init_after_keychain(self) -> None:
+        """Validate the certificate and authenticate once the keychain exists"""
         cert_name = self.cert_handler.cert_common_name
         if cert_name == "Apple Development":
             self.profile_type = "development"
