@@ -22,24 +22,11 @@ class AppComponent:
     )
 
     def __post_init__(self):
-        """Extract bundle IDs and determine if this is a primary component"""
-        # Extract bundle ID from entitlements if present
+        """Extract the bundle ID from entitlements if present"""
         if self.entitlements and "application-identifier" in self.entitlements:
             ent_id = self.entitlements["application-identifier"]
             if "." in ent_id:  # Should be in format TEAM_ID.BUNDLE_ID
                 self.entitlements_bundle_id = ent_id.split(".", 1)[1]
-
-        # Primary: main app binary or app extensions
-        self.is_primary = (
-            self.path == Path(".")  # Main app binary
-            or self.path.suffix == ".appex"  # App extension
-            or any(
-                p.suffix == ".appex" for p in self.path.parents
-            )  # Inside app extension
-        )
-
-        # Secondary: frameworks, dylibs, bundles get simple signing
-        # No need to explicitly set False as it's the default.
 
 
 def decode_clean(b: bytes) -> str:
@@ -245,8 +232,18 @@ class IPAInspector:
                 if bundle.suffix == ".dylib":
                     executable_path = bundle
                 else:
-                    # For frameworks, use bundle/stem convention
+                    # Use the bundle's declared executable, falling back to the
+                    # Foo.framework/Foo convention
                     executable_path = bundle / bundle.stem
+                    bundle_info_plist = bundle / "Info.plist"
+                    if bundle_info_plist.exists():
+                        try:
+                            with open(bundle_info_plist, "rb") as f:
+                                bundle_info = plistlib.load(f)
+                            if bundle_info.get("CFBundleExecutable"):
+                                executable_path = bundle / bundle_info["CFBundleExecutable"]
+                        except Exception as e:
+                            print(f"Warning: Failed to read {bundle_info_plist}: {e}")
 
                 if not executable_path.exists():
                     continue
